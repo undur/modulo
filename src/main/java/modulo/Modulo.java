@@ -17,7 +17,7 @@ import modulo.AdaptorConfigParser.AdaptorConfig;
 import modulo.AdaptorConfigParser.Instance;
 
 /**
- *
+ * A jetty-based reverse proxy, meant to potentially replace mod_WebObjects
  */
 
 public class Modulo {
@@ -50,7 +50,7 @@ public class Modulo {
 	}
 
 	/**
-	 * Subclassing Jetty's own proxy handler, allowing us to make any further modifications to the proxied requests
+	 * Subclassing Jetty's own proxy handler, allowing us to make any modifications we need to the request before forwarding it
 	 */
 	private static class ModuloProxy extends ProxyHandler.Reverse {
 
@@ -58,13 +58,6 @@ public class Modulo {
 			super( httpURIRewriter );
 		}
 
-		// Header's we'll probably need to handle:
-		// x-webobjects-adaptor-version
-		// x-webobjects-request-id
-		// x-webobjects-request-method
-
-		// Example request headers from a request proxied by the Apache adaptor
-		// {Accept=[text/html, application/xhtml+xml, application/xml;q=0.9, */*;q=0.8], Accept-Encoding=[gzip, deflate, br, zstd], Accept-Language=[en-GB, en-US;q=0.7, en;q=0.3], connection=[close], DNT=[1], DOCUMENT_ROOT=[/rebbi/com.fermentedshark/html], Host=[www.fermentedshark.com], HTTPS=[on], mod_rewrite_rewritten=[1], Priority=[u=0, i], Referer=[https://www.fermentedshark.com/], REMOTE_ADDR=[31.209.136.250], REMOTE_HOST=[31.209.136.250], REMOTE_PORT=[49578], SCRIPT_FILENAME=[/Apps], SCRIPT_URI=[https://www.fermentedshark.com/page/templating], SCRIPT_URL=[/page/templating], Sec-Fetch-Dest=[document], Sec-Fetch-Mode=[navigate], Sec-Fetch-Site=[same-origin], Sec-Fetch-User=[?1], SERVER_ADMIN=[root@localhost], SERVER_NAME=[www.fermentedshark.com], SERVER_PORT=[443], SERVER_SOFTWARE=[Apache/2.4.6 (CentOS) OpenSSL/1.0.2k-fips], ssl-secure-reneg=[1], SSL_TLS_SNI=[www.fermentedshark.com], UNIQUE_ID=[aAdE0G3LH-oETpsNLF2qBwAAAAw], Upgrade-Insecure-Requests=[1], User-Agent=[Mozilla/5.0 (Macintosh;Intel Mac OS X 10.15;rv:139.0) Gecko/20100101 Firefox/139.0], x-webobjects-adaptor-version=[Apache], x-webobjects-request-id=[680605a00000534c00000a82], x-webobjects-request-method=[GET]}
 		@Override
 		protected void addProxyHeaders( Request clientToProxyRequest, org.eclipse.jetty.client.Request proxyToServerRequest ) {
 			super.addProxyHeaders( clientToProxyRequest, proxyToServerRequest );
@@ -74,18 +67,6 @@ public class Modulo {
 			proxyToServerRequest.headers( headers -> headers.add( "x-webobjects-adaptor-version", "Modulo" ) );
 			proxyToServerRequest.headers( headers -> headers.add( "x-webobjects-request-id", UUID.randomUUID().toString() ) );
 			proxyToServerRequest.headers( headers -> headers.add( "x-webobjects-request-method", clientToProxyRequest.getMethod() ) );
-
-			//			proxyToServerRequest.headers( headers -> headers.computeField( "x-webobjects-adaptor-version", ( header, viaFields ) -> {
-			//				return new HttpField( "x-webobjects-adaptor-version", "Modulo" );
-			//			} ) );
-			//
-			//			proxyToServerRequest.headers( headers -> headers.computeField( "x-webobjects-request-id", ( header, viaFields ) -> {
-			//				return new HttpField( "x-webobjects-request-id", UUID.randomUUID().toString() );
-			//			} ) );
-			//
-			//			proxyToServerRequest.headers( headers -> headers.computeField( "x-webobjects-request-method", ( header, viaFields ) -> {
-			//				return new HttpField( "x-webobjects-request-method", clientToProxyRequest.getMethod() );
-			//			} ) );
 		}
 	}
 
