@@ -75,9 +75,6 @@ public class Modulo {
 		@Override
 		protected void addProxyHeaders( Request clientToProxyRequest, org.eclipse.jetty.client.Request proxyToServerRequest ) {
 			super.addProxyHeaders( clientToProxyRequest, proxyToServerRequest );
-
-			logger.info( "Received headers: " + clientToProxyRequest.getHeaders() );
-
 			proxyToServerRequest.headers( headers -> headers.add( "x-webobjects-adaptor-version", "Modulo" ) );
 			proxyToServerRequest.headers( headers -> headers.add( "x-webobjects-request-id", UUID.randomUUID().toString() ) );
 			proxyToServerRequest.headers( headers -> headers.add( "x-webobjects-request-method", clientToProxyRequest.getMethod() ) );
