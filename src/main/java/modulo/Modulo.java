@@ -33,8 +33,6 @@ public class Modulo {
 
 	/**
 	 * The port to run the proxy on
-	 *
-	 * FIXME: Configurable // Hugi 2025-04-22
 	 */
 	private static final int PORT = 1400;
 
@@ -64,7 +62,7 @@ public class Modulo {
 	}
 
 	/**
-	 * Subclassing Jetty's own proxy handle, allows us to make any modifications we need to the request before forwarding it
+	 * Subclass of Jetty's proxy handler, allows us to make required modifications to the proxied request before forwarding it to the instance
 	 */
 	private static class ModuloProxy extends ProxyHandler.Reverse {
 
@@ -82,7 +80,7 @@ public class Modulo {
 	}
 
 	/**
-	 * Function that rewrites the incoming URI to the target URI
+	 * @return A Function that generates the instance URI to target
 	 */
 	public static Function<Request, HttpURI> rewriteURIFunction() {
 		return request -> {
@@ -101,7 +99,7 @@ public class Modulo {
 					.scheme( HttpScheme.HTTP )
 					.port( port );
 
-			logger.info( "Rewrote %s -> %s".formatted( originalURI, targetURI ) );
+			logger.info( "Forwarding %s -> %s".formatted( originalURI, targetURI ) );
 
 			return targetURI;
 		};
@@ -110,8 +108,8 @@ public class Modulo {
 	/**
 	 * @return The name of the application from the given URI
 	 */
-	private static String applicationNameFromURI( final HttpURI originalURI ) {
-		final String[] splitPath = originalURI.getPath().split( "/" );
+	private static String applicationNameFromURI( final HttpURI uri ) {
+		final String[] splitPath = uri.getPath().split( "/" );
 		String applicationName = splitPath[3];
 
 		// Remove the .woa from the application name
