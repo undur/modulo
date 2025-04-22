@@ -23,12 +23,17 @@ import org.w3c.dom.NodeList;
 import org.xml.sax.SAXException;
 
 /**
- * Experimental parsing of SiteConfig.xml
- *
- * Needs a SiteConfig.xml file in src/main/resources to function (one is currently not provided by default)
+ * Parses wotaskd's adaptor config
  */
 
 public class AdaptorConfigParser {
+
+	/**
+	 * FIXME: These should not be constants, and should both be configurable in a nice way // Hugi 2025-04-22
+	 */
+	// The password for wotaskd/JavaMonitor is provided as a system property. Note that the provided password must be the encoded password (as it appears in SiteConfig.xml)
+	private static final String wotaskdPassword = System.getProperty( "wotaskdpassword" );
+	private static final String wotaskdHost = "linode-4.rebbi.is";
 
 	public record Instance( int id, String host, int port ) {}
 
@@ -45,13 +50,12 @@ public class AdaptorConfigParser {
 		}
 	}
 
+	/**
+	 * @return The deserialized adaptor configuration, obtained from wotaskd
+	 */
 	public static AdaptorConfig adaptorConfig() {
 		final AdaptorConfig config = new AdaptorConfig();
-		importApplications( config );
-		return config;
-	}
 
-	private static void importApplications( final AdaptorConfig config ) {
 		final Document siteConfig = readConfigDocument();
 
 		final NodeList nodes = siteConfig
@@ -88,14 +92,14 @@ public class AdaptorConfigParser {
 				}
 			}
 		}
+
+		return config;
 	}
 
+	/**
+	 * @return The woadaptor configuration from wotaskd as a Document
+	 */
 	private static Document readConfigDocument() {
-
-		// The password for wotaskd/JavaMonitor is provided as a system property
-		// FIXME: We should have a nicer way to provide this
-		final String wotaskdPassword = System.getProperty( "wotaskdpassword" );
-		final String wotaskdHost = "linode-4.rebbi.is"; // FIXME: Make configurable
 
 		final HttpRequest request = HttpRequest
 				.newBuilder( URI.create( "http://%s:1085/Apps/WebObjects/wotaskd.woa/wa/woconfig".formatted( wotaskdHost ) ) )
