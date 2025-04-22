@@ -1,5 +1,6 @@
 package modulo;
 
+import java.util.UUID;
 import java.util.function.Function;
 
 import org.eclipse.jetty.http.HttpField;
@@ -59,8 +60,20 @@ public class Modulo {
 		protected void addProxyHeaders( Request clientToProxyRequest, org.eclipse.jetty.client.Request proxyToServerRequest ) {
 			super.addProxyHeaders( clientToProxyRequest, proxyToServerRequest );
 
-			proxyToServerRequest.headers( headers -> headers.computeField( "some-header", ( header, viaFields ) -> {
-				return new HttpField( "some-header", "some-value" );
+			//			proxyToServerRequest.headers( headers -> headers.computeField( "some-header", ( header, viaFields ) -> {
+			//				return new HttpField( "some-header", "some-value" );
+			//			} ) );
+
+			proxyToServerRequest.headers( headers -> headers.computeField( "x-webobjects-adaptor-version", ( header, viaFields ) -> {
+				return new HttpField( "x-webobjects-adaptor-version", "Modulo" );
+			} ) );
+
+			proxyToServerRequest.headers( headers -> headers.computeField( "x-webobjects-request-id", ( header, viaFields ) -> {
+				return new HttpField( "x-webobjects-request-id", UUID.randomUUID().toString() );
+			} ) );
+
+			proxyToServerRequest.headers( headers -> headers.computeField( "x-webobjects-request-method", ( header, viaFields ) -> {
+				return new HttpField( "x-webobjects-request-method", clientToProxyRequest.getMethod() );
 			} ) );
 
 			// x-webobjects-adaptor-version
