@@ -3,7 +3,6 @@ package modulo;
 import java.util.UUID;
 import java.util.function.Function;
 
-import org.eclipse.jetty.http.HttpField;
 import org.eclipse.jetty.http.HttpScheme;
 import org.eclipse.jetty.http.HttpURI;
 import org.eclipse.jetty.http.HttpURI.Mutable;
@@ -72,17 +71,21 @@ public class Modulo {
 
 			logger.info( "Received headers: " + clientToProxyRequest.getHeaders() );
 
-			proxyToServerRequest.headers( headers -> headers.computeField( "x-webobjects-adaptor-version", ( header, viaFields ) -> {
-				return new HttpField( "x-webobjects-adaptor-version", "Modulo" );
-			} ) );
+			proxyToServerRequest.headers( headers -> headers.add( "x-webobjects-adaptor-version", "Modulo" ) );
+			proxyToServerRequest.headers( headers -> headers.add( "x-webobjects-request-id", UUID.randomUUID().toString() ) );
+			proxyToServerRequest.headers( headers -> headers.add( "x-webobjects-request-method", clientToProxyRequest.getMethod() ) );
 
-			proxyToServerRequest.headers( headers -> headers.computeField( "x-webobjects-request-id", ( header, viaFields ) -> {
-				return new HttpField( "x-webobjects-request-id", UUID.randomUUID().toString() );
-			} ) );
-
-			proxyToServerRequest.headers( headers -> headers.computeField( "x-webobjects-request-method", ( header, viaFields ) -> {
-				return new HttpField( "x-webobjects-request-method", clientToProxyRequest.getMethod() );
-			} ) );
+			//			proxyToServerRequest.headers( headers -> headers.computeField( "x-webobjects-adaptor-version", ( header, viaFields ) -> {
+			//				return new HttpField( "x-webobjects-adaptor-version", "Modulo" );
+			//			} ) );
+			//
+			//			proxyToServerRequest.headers( headers -> headers.computeField( "x-webobjects-request-id", ( header, viaFields ) -> {
+			//				return new HttpField( "x-webobjects-request-id", UUID.randomUUID().toString() );
+			//			} ) );
+			//
+			//			proxyToServerRequest.headers( headers -> headers.computeField( "x-webobjects-request-method", ( header, viaFields ) -> {
+			//				return new HttpField( "x-webobjects-request-method", clientToProxyRequest.getMethod() );
+			//			} ) );
 		}
 	}
 
