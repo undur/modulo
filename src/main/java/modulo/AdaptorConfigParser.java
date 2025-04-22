@@ -12,7 +12,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 
-import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
 
@@ -106,33 +105,25 @@ public class AdaptorConfigParser {
 				.headers( "password", wotaskdPassword )
 				.build();
 
-		byte[] bytes;
-
 		try {
-			bytes = HttpClient
+			final byte[] adaptorConfigBytes = HttpClient
 					.newHttpClient()
 					.send( request, BodyHandlers.ofByteArray() )
 					.body();
-		}
-		catch( IOException | InterruptedException e ) {
-			throw new RuntimeException( e );
-		}
 
-		final ByteArrayInputStream xmlStream = new ByteArrayInputStream( bytes );
-
-		//		try( final InputStream xmlStream = AdaptorConfigParser.class.getClassLoader().getResourceAsStream( "AdaptorConfig.xml" )) {
-		try {
-			final DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();
-			final DocumentBuilder dBuilder = dbFactory.newDocumentBuilder();
-			final Document doc = dBuilder.parse( xmlStream );
-			// doc.getDocumentElement().normalize();
-			return doc;
+			return DocumentBuilderFactory
+					.newInstance()
+					.newDocumentBuilder()
+					.parse( new ByteArrayInputStream( adaptorConfigBytes ) );
 		}
-		catch( IOException | ParserConfigurationException | SAXException e ) {
+		catch( IOException | InterruptedException | ParserConfigurationException | SAXException e ) {
 			throw new RuntimeException( e );
 		}
 	}
 
+	/**
+	 * Just for some local testing...
+	 */
 	public static void main( String[] args ) {
 
 		for( Entry<String, Application> entry : adaptorConfig().applications().entrySet() ) {
