@@ -18,6 +18,13 @@ import modulo.AdaptorConfigParser.Instance;
 
 /**
  * A jetty-based reverse proxy, meant to potentially replace mod_WebObjects
+ *
+ * FIXME: We're currently always targeting the first instance. Here's where a load balacing scheme might come in strong... // Hugi 2025-04-22
+ * FIXME: Oh, and we're going to have to target the correct instance based on the request URL // Hugi 2025-04-22
+ * FIXME: We might want to gather some statistics and logging // Hugi 2025-04-22
+ * FIXME: We're missing configuration options for ... everything // Hugi 2025-04-22
+ * FIXME: Adaptor config needs to be regularly updated/manually updatable // Hugi 2025-04-22
+ * FIXME: We need a GUI for this thing. ng? // Hugi 2025-04-22
  */
 
 public class Modulo {
@@ -26,31 +33,38 @@ public class Modulo {
 
 	/**
 	 * The port to run the proxy on
+	 *
+	 * FIXME: Configurable // Hugi 2025-04-22
 	 */
 	private static final int PORT = 1400;
 
-	public static void main( String[] argv ) {
-		logger.info( "Starting modulo" );
-		final Server server = new Server();
+	/**
+	 * FIXME: This should most definitely not be static and should be regularly updated // Hugi 2025-04-22
+	 */
+	private static AdaptorConfig adaptorConfig = AdaptorConfigParser.adaptorConfig();
 
+	public static void main( String[] argv ) {
+
+		logger.info( "Starting modulo" );
+
+		final Server server = new Server();
 		final ServerConnector connector = new ServerConnector( server );
 		connector.setPort( PORT );
 		server.addConnector( connector );
 		server.setHandler( new ModuloProxy( rewriteURIFunction() ) );
 
-		logger.info( "Modulo started" );
-
 		try {
 			server.start();
 		}
 		catch( final Exception e ) {
+			logger.info( "Modulo startup failed" );
 			e.printStackTrace();
 			System.exit( -1 );
 		}
 	}
 
 	/**
-	 * Subclassing Jetty's own proxy handler, allowing us to make any modifications we need to the request before forwarding it
+	 * Subclassing Jetty's own proxy handle, allows us to make any modifications we need to the request before forwarding it
 	 */
 	private static class ModuloProxy extends ProxyHandler.Reverse {
 
@@ -71,24 +85,14 @@ public class Modulo {
 	}
 
 	/**
-	 * FIXME: This should most definitely not be static, and should be regularly updated
-	 */
-	private static AdaptorConfig adaptorConfig = AdaptorConfigParser.adaptorConfig();
-
-	/**
 	 * Function that rewrites the incoming URI to the target URI
 	 */
 	public static Function<Request, HttpURI> rewriteURIFunction() {
 		return request -> {
 			final HttpURI originalURI = request.getHttpURI();
+			final String applicationName = applicationNameFromURI( originalURI );
 
-			final String[] splitPath = originalURI.getPath().split( "/" );
-			String applicationName = splitPath[3];
-
-			// Remove the .woa from the application name
-			applicationName = applicationName.split( "\\." )[0];
-
-			// FIXME: We're hardcoding targeting the first instance for testing
+			// FIXME: We're hardcoding targeting the first instance for testing // Hugi 2025-04-22
 			final Instance targetInstance = adaptorConfig.application( applicationName ).instances().getFirst();
 
 			final String hostName = targetInstance.host();
@@ -104,5 +108,18 @@ public class Modulo {
 
 			return targetURI;
 		};
+	}
+
+	/**
+	 * @return The name of the application from the given URI
+	 */
+	private static String applicationNameFromURI( final HttpURI originalURI ) {
+		final String[] splitPath = originalURI.getPath().split( "/" );
+		String applicationName = splitPath[3];
+
+		// Remove the .woa from the application name
+		applicationName = applicationName.split( "\\." )[0];
+
+		return applicationName;
 	}
 }
