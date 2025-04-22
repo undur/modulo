@@ -104,10 +104,8 @@ public class Modulo {
 			final String[] splitPath = originalURI.getPath().split( "/" );
 			String applicationName = splitPath[3];
 
-			// REmove the .woa of the end of the application name
+			// Remove the .woa from the application name
 			applicationName = applicationName.split( "\\." )[0];
-
-			System.out.println( "Application name is: " + applicationName );
 
 			// FIXME: We're hardcoding targeting the first instance for testing
 			final Instance targetInstance = adaptorConfig.application( applicationName ).instances().getFirst();
