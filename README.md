@@ -19,7 +19,7 @@ Now, turns out Jetty ships with a reverse proxy provided by the `jetty-proxy` mo
 
 If this works it also solves another problem with `mod_WebObjects` which is, honestly, that it's written in C. Having the "adaptor" in Java, the native language of most WO devs, means it can be more easily maintained and extended by WO users, along with `wotaskd` and `JavaMonitor`. Imagine a totally transparent, open WO Java-based adaptor that you can extend and understand yourself. Need to tweak configuraiton or get some logging? Add a GUI. Why shouldn't the WO adaptor be a WO app? `wotaskd` and `JavaMonitor` already are, seems fair `mod_WebObjects` should be too.
 
-### Work
+## Work
 
 This has been tested on a small project, so we know it "looks like it works". It now remains to be seen if it works well enought to be sensible/feasible in reality. Potential issues are:
 
@@ -30,4 +30,4 @@ This has been tested on a small project, so we know it "looks like it works". It
 
 If this actually works, it might be interesting to look into taking this further. Jetty is a web server so if you don't need Apache's features, you might not really need Apache in front of it. It might be easier to just use Jetty as the front-facing server, meaning no "double-proxying" — and again, allowing us to have fun with the server. Still have to look into how convenient this would _actually_ be when it comes to virtual hosting, SSL certs, logging etc...
 
-Probably senseless. But a fun thought experiment.
+Probably senseless, but a fun thought experiment. Let's start with seeing if this _actually works in any way_ though.
