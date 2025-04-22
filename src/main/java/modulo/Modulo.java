@@ -27,13 +27,15 @@ public class Modulo {
 	private static final int PORT = 1400;
 
 	public static void main( String[] argv ) {
-
+		logger.info( "Starting modulo" );
 		final Server server = new Server();
 
 		final ServerConnector connector = new ServerConnector( server );
 		connector.setPort( PORT );
 		server.addConnector( connector );
 		server.setHandler( new ModuloProxy( rewriteURIFunction() ) );
+
+		logger.info( "Modulo started" );
 
 		try {
 			server.start();
