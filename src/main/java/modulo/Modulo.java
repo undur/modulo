@@ -99,7 +99,10 @@ public class Modulo {
 			final HttpURI originalURI = request.getHttpURI();
 
 			final String[] splitPath = originalURI.getPath().split( "/" );
-			final String applicationName = splitPath[2];
+			String applicationName = splitPath[3];
+
+			// REmove the .woa of the end of the application name
+			applicationName = applicationName.split( "\\." )[0];
 
 			System.out.println( "Application name is: " + applicationName );
 
