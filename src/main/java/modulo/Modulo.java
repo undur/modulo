@@ -81,9 +81,9 @@ public class Modulo {
 
 			final Mutable targetURI = HttpURI
 					.build( originalURI )
-					.host( "localhost" )
+					.host( "linode-4.rebbi.is" )
 					.scheme( HttpScheme.HTTP )
-					.port( 1200 );
+					.port( 2011 );
 
 			logger.info( "Rewrote %s -> %s".formatted( originalURI, targetURI ) );
 
