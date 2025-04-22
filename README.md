@@ -6,22 +6,22 @@ _This project is still experimental and these musings might never become reality
 
 ## Why?
 
-One of the largest hassles when setting up a WO deployment environment is the Apache adaptor. You need to compile the adaptor, recite dark configuration chants, scream in desperation at `/etc/WebObjects/Properties`, make a sacrifice (preferably human, young female recommended) to your deity of choice (Cthulhu works for me) and then hope for the best. And after all that, `mod_WebObjects` will force you to disable HTTP/2 (and probably HTTP/3, if and when that gets support in Apache).
+One of the largest hassles when setting up a WO deployment environment is the Apache adaptor. You need to compile the adaptor, recite dark configuration chants, scream in desperation at `/etc/WebObjects/Properties`, make a sacrifice (preferably human, young female recommended) to your deity of choice (Cthulhu works for me) and then hope for the best. And after all that, `mod_WebObjects` will force you to disable HTTP/2 (and probably eventually HTTP/3, if and when that gets support in Apache. Not that that's a biggie but it's a little irritating).
 
-Some of these problems can be avoided by using `mod_proxy` to proxy requests to your application, but doing so removes a lot of the current (and potential) management goodness you get from managing your deployment environment using `JavaMonitor` and `wotaskd`, making it something of a pain to configure and maintain for each application.
+Some of these problems can be avoided by using `mod_proxy` to proxy requests to your application, but doing so removes a lot of the current (and potential) management goodness you get from managing your deployment environment using `JavaMonitor` and `wotaskd`, and makes it something of a pain to create and maintain configuration for each application.
 
 ## The solution?
 
-Turns out Jetty ships with a reverse proxy provided by the `jetty-proxy` module that could theoretically replace `mod_WebObjects`:
+Turns out Jetty ships with a reverse proxy provided by the `jetty-proxy` module that could theoretically replace `mod_WebObjects`. How so?
 
  * The Jetty proxy runs as a standalone application.
  * The proxy application knows about WO apps and instances by reading the adaptor configuration from `wotaskd:1085`.
- * At the webserver level, requests matching the adaptor URL pattern, e.g. `/Apps/WebObjects/*`, would be directed to this "proxy application" using e.g. Apache's `ProxyPass`.
- * The Jetty proxy will forward the request to the appropriate instance for handling based on application name (and instance number, if applicable).
+ * At the webserver level, requests matching the adaptor URL pattern, e.g. `/Apps/WebObjects/*`, would be forwarder to this "proxy application" using e.g. Apache's `ProxyPass`.
+ * The Jetty proxy will then forward the request to the appropriate instance for handling based on application name (and instance number, if applicable).
 
-This solves another problem with `mod_WebObjects` which is, really, that it's written in C, making it something of a black box for most WO developers. Having an "adaptor" written in Java, the native language of most WO devs, means it can be more easily maintained and extended, along with `wotaskd` and `JavaMonitor`. Imagine a totally open WO Java-based adaptor that you can understand and extend. Need to tweak configuration or add some logging? Sure, go ahead. Want to know more about what's happening? Add a GUI. After all, why shouldn't the WO adaptor be a WO app? `wotaskd` and `JavaMonitor` already are, seems fair `mod_WebObjects` should be too.
+This solves another problem with `mod_WebObjects` which is, really, that it's written in C, making it something of a black box for most WO developers. Having an "adaptor" written in Java, the native language of most WO devs, means it can be more easily maintained and extended, along with `wotaskd` and `JavaMonitor`. Imagine a totally open WO Java-based adaptor that you can understand and extend. Need to tweak configuration, customize your balancing strategy or add some weird adaptor logging? Sure, go ahead. Want to know more about what's happening? Add a GUI. After all, why shouldn't the WO adaptor be a WO app? `wotaskd` and `JavaMonitor` already are, seems fair `mod_WebObjects` could be too.
 
-Another positive is that this "adaptor" is independent of the web server. A standalone Java-based adaptor can be used with any server that can act as a reverse proxy, Nginx, Caddy, Apache, HAProxy etc.
+This also makes the "adaptor" independent of the web server. A standalone Java-based proxy adaptor can be used with any server that can act as a reverse proxy, Nginx, Caddy, Apache, HAProxy etc.
 
 ## Status
 
