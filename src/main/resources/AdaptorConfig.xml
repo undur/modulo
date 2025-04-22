@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="ASCII"?>
+<adaptor>
+  <application name="JavaMonitor">
+    <instance id="2" port="2021" host="linode-4.rebbi.is"/>
+  </application>
+  <application name="Hugi">
+    <instance id="2" port="2011" host="linode-4.rebbi.is"/>
+  </application>
+  <application name="Fagtaekni">
+    <instance id="2" port="2014" host="linode-4.rebbi.is"/>
+  </application>
+  <application name="Campaigns">
+    <instance id="1" port="2002" host="linode-4.rebbi.is"/>
+  </application>
+  <application name="Strimillinn" urlVersion="4">
+    <instance id="2" port="2010" host="linode-4.rebbi.is"/>
+  </application>
+  <application name="SundfelagHafnarfjardar">
+    <instance id="2" port="2016" host="linode-4.rebbi.is"/>
+  </application>
+  <application name="SW">
+    <instance id="2" port="2001" host="linode-4.rebbi.is"/>
+  </application>
+  <application name="KidWits">
+    <instance id="2" port="2006" host="linode-4.rebbi.is"/>
+  </application>
+  <application name="Rebbi">
+    <instance id="1" port="2007" host="linode-4.rebbi.is"/>
+  </application>
+  <application name="ASI">
+    <instance id="1" port="2008" host="linode-4.rebbi.is"/>
+  </application>
+  <application name="ng-website" urlVersion="4">
+    <instance id="1" port="2009" host="linode-4.rebbi.is" sendTimeout="30" recvTimeout="30" cnctTimeout="30"/>
+  </application>
+  <application name="oskgunnlaugs">
+    <instance id="1" port="2012" host="linode-4.rebbi.is"/>
+  </application>
+  <application name="Gagnasafn">
+    <instance id="1" port="2015" host="linode-4.rebbi.is"/>
+  </application>
+  <application name="Lidamot">
+    <instance id="1" port="2013" host="linode-4.rebbi.is"/>
+  </application>
+  <application name="husvordurinn-ng">
+    <instance id="1" port="2017" host="linode-4.rebbi.is"/>
+  </application>
+  <application name="whoacommunity">
+    <instance id="1" port="2004" host="linode-4.rebbi.is"/>
+  </application>
+</adaptor>
