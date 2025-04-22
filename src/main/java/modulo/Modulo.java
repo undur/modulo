@@ -14,6 +14,9 @@ import org.eclipse.jetty.server.ServerConnector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import modulo.AdaptorConfigParser.AdaptorConfig;
+import modulo.AdaptorConfigParser.Instance;
+
 /**
  *
  */
@@ -84,17 +87,33 @@ public class Modulo {
 	}
 
 	/**
+	 * FIXME: This should most definitely not be static, and should be regularly updated
+	 */
+	private static AdaptorConfig adaptorConfig = AdaptorConfigParser.adaptorConfig();
+
+	/**
 	 * Function that rewrites the incoming URI to the target URI
 	 */
 	public static Function<Request, HttpURI> rewriteURIFunction() {
 		return request -> {
 			final HttpURI originalURI = request.getHttpURI();
 
+			final String[] splitPath = originalURI.getPath().split( "/" );
+			final String applicationName = splitPath[2];
+
+			System.out.println( "Application name is: " + applicationName );
+
+			// FIXME: We're hardcoding the port number of the first instance for testing
+			final Instance targetInstance = adaptorConfig.application( applicationName ).instances().getFirst();
+
+			final String hostName = targetInstance.host();
+			final int port = targetInstance.port();
+
 			final Mutable targetURI = HttpURI
 					.build( originalURI )
-					.host( "linode-4.rebbi.is" )
+					.host( hostName )
 					.scheme( HttpScheme.HTTP )
-					.port( 2011 );
+					.port( port );
 
 			logger.info( "Rewrote %s -> %s".formatted( originalURI, targetURI ) );
 
