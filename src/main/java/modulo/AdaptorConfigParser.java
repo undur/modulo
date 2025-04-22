@@ -65,7 +65,6 @@ public class AdaptorConfigParser {
 			final Node applicationNode = nodes.item( i );
 
 			if( applicationNode.getNodeType() == Node.ELEMENT_NODE ) {
-				final NodeList instanceNodes = applicationNode.getChildNodes();
 
 				// Items to populate for each node
 				String applicationName = applicationNode
@@ -76,17 +75,20 @@ public class AdaptorConfigParser {
 				final Application application = new Application( applicationName, new ArrayList<>() );
 				config.applications().put( application.name(), application );
 
+				final NodeList instanceNodes = applicationNode.getChildNodes();
+
 				for( int j = 0; j < instanceNodes.getLength(); j++ ) {
 					final Node instanceNode = instanceNodes.item( j );
 
 					if( instanceNode.getNodeType() == Node.ELEMENT_NODE ) {
 						final NamedNodeMap attributes = instanceNode.getAttributes();
 
-						String id = attributes.getNamedItem( "id" ).getNodeValue();
-						String host = attributes.getNamedItem( "host" ).getNodeValue();
-						String port = attributes.getNamedItem( "port" ).getNodeValue();
+						final String id = attributes.getNamedItem( "id" ).getNodeValue();
+						final String host = attributes.getNamedItem( "host" ).getNodeValue();
+						final String port = attributes.getNamedItem( "port" ).getNodeValue();
 
-						application.instances().add( new Instance( Integer.valueOf( id ), host, Integer.valueOf( port ) ) );
+						final Instance instance = new Instance( Integer.valueOf( id ), host, Integer.valueOf( port ) );
+						application.instances().add( instance );
 					}
 				}
 			}
