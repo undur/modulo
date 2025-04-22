@@ -60,6 +60,8 @@ public class Modulo {
 		protected void addProxyHeaders( Request clientToProxyRequest, org.eclipse.jetty.client.Request proxyToServerRequest ) {
 			super.addProxyHeaders( clientToProxyRequest, proxyToServerRequest );
 
+			logger.info( "Received headers: " + clientToProxyRequest.getHeaders() );
+
 			//			proxyToServerRequest.headers( headers -> headers.computeField( "some-header", ( header, viaFields ) -> {
 			//				return new HttpField( "some-header", "some-value" );
 			//			} ) );
