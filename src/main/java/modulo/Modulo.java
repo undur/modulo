@@ -109,7 +109,7 @@ public class Modulo {
 
 			System.out.println( "Application name is: " + applicationName );
 
-			// FIXME: We're hardcoding the port number of the first instance for testing
+			// FIXME: We're hardcoding targeting the first instance for testing
 			final Instance targetInstance = adaptorConfig.application( applicationName ).instances().getFirst();
 
 			final String hostName = targetInstance.host();

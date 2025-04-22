@@ -7,7 +7,10 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse.BodyHandlers;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
 
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -31,21 +34,19 @@ public class AdaptorConfigParser {
 
 	public record Application( String name, List<Instance> instances ) {}
 
-	public record AdaptorConfig( List<Application> applications ) {
+	public record AdaptorConfig( Map<String, Application> applications ) {
+
+		public AdaptorConfig() {
+			this( new HashMap<>() );
+		}
 
 		public Application application( String applicationName ) {
-			for( Application application : applications() ) {
-				if( application.name().equals( applicationName ) ) {
-					return application;
-				}
-			}
-
-			return null;
+			return applications.get( applicationName );
 		}
 	}
 
 	public static AdaptorConfig adaptorConfig() {
-		final AdaptorConfig config = new AdaptorConfig( new ArrayList<>() );
+		final AdaptorConfig config = new AdaptorConfig();
 		importApplications( config );
 		return config;
 	}
@@ -70,7 +71,7 @@ public class AdaptorConfigParser {
 						.getNodeValue();
 
 				final Application application = new Application( applicationName, new ArrayList<>() );
-				config.applications().add( application );
+				config.applications().put( application.name(), application );
 
 				for( int j = 0; j < instanceNodes.getLength(); j++ ) {
 					final Node instanceNode = instanceNodes.item( j );
@@ -130,8 +131,9 @@ public class AdaptorConfigParser {
 
 	public static void main( String[] args ) {
 
-		for( Application application : adaptorConfig().applications() ) {
-			System.out.println( application.name() );
+		for( Entry<String, Application> entry : adaptorConfig().applications().entrySet() ) {
+			var application = entry.getValue();
+			System.out.println( "======= " + application.name() );
 			for( Instance instance : application.instances() ) {
 				System.out.println( " - " + instance );
 			}
