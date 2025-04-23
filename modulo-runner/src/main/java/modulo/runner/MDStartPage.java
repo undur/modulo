@@ -2,7 +2,7 @@ package modulo.runner;
 
 import java.util.List;
 
-import modulo.AdaptorConfigParser;
+import modulo.Modulo;
 import ng.appserver.NGContext;
 import ng.appserver.templating.NGComponent;
 
@@ -16,7 +16,7 @@ public class MDStartPage extends NGComponent {
 	}
 
 	public List<modulo.AdaptorConfigParser.Application> applications() {
-		return AdaptorConfigParser
+		return Modulo
 				.adaptorConfig()
 				.applications()
 				.values()

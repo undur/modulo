@@ -1,6 +1,7 @@
 package modulo;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.function.Function;
 
@@ -15,6 +16,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import modulo.AdaptorConfigParser.AdaptorConfig;
+import modulo.AdaptorConfigParser.Application;
 import modulo.AdaptorConfigParser.Instance;
 
 /**
@@ -39,7 +41,7 @@ public class Modulo {
 	/**
 	 * FIXME: This should most definitely not be static and should be regularly updated // Hugi 2025-04-22
 	 */
-	private static AdaptorConfig adaptorConfig = AdaptorConfigParser.adaptorConfig();
+	private static AdaptorConfig adaptorConfig = fetchAdaptorConfig();
 
 	public static void main( String[] argv ) {
 
@@ -59,6 +61,31 @@ public class Modulo {
 			e.printStackTrace();
 			System.exit( -1 );
 		}
+	}
+
+	public static AdaptorConfig adaptorConfig() {
+		return adaptorConfig;
+	}
+
+	/**
+	 * @return The adaptorConfig we'll initialize with.
+	 *
+	 * FIXME: This will be refactored out of existence soon // Hugi 2025-04-23
+	 */
+	private static AdaptorConfig fetchAdaptorConfig() {
+
+		if( System.getProperty( "wotaskdpassword" ) != null ) {
+			System.out.println( "wOOt!" );
+			return AdaptorConfigParser.adaptorConfig();
+		}
+
+		// If the password is not set, we fire up the test server and return an adaptor configuration pointing to it
+		FakeApplicationInstance.start( 1500 );
+
+		final Instance instance = new Instance( 1, "localhost", 1500 );
+		final modulo.AdaptorConfigParser.Application app = new modulo.AdaptorConfigParser.Application( "Fake", List.of( instance ) );
+		final AdaptorConfig config = new AdaptorConfig( Map.of( "Fake", app ) );
+		return config;
 	}
 
 	/**
@@ -88,11 +115,13 @@ public class Modulo {
 
 			final String applicationName = applicationNameFromURI( originalURI );
 
-			if( applicationName == null ) {
+			final Application application = adaptorConfig.application( applicationName );
+
+			if( application == null ) {
 				throw new IllegalArgumentException( "No application found with the name %s".formatted( applicationName ) );
 			}
 
-			final List<Instance> instances = adaptorConfig.application( applicationName ).instances();
+			final List<Instance> instances = application.instances();
 
 			if( instances.isEmpty() ) {
 				throw new IllegalStateException( "No instances registered for application %s".formatted( applicationName ) );
