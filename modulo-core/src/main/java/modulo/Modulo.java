@@ -24,7 +24,6 @@ import modulo.AdaptorConfigParser.Instance;
  * FIXME: We might want to gather some statistics and logging // Hugi 2025-04-22
  * FIXME: We're missing configuration options for ... everything // Hugi 2025-04-22
  * FIXME: Adaptor config needs to be regularly updated/manually updatable // Hugi 2025-04-22
- * FIXME: We need a GUI for this thing. ng? // Hugi 2025-04-22
  */
 
 public class Modulo {
