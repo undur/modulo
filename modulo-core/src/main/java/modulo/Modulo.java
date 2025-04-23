@@ -1,5 +1,6 @@
 package modulo;
 
+import java.util.List;
 import java.util.UUID;
 import java.util.function.Function;
 
@@ -84,10 +85,21 @@ public class Modulo {
 	public static Function<Request, HttpURI> rewriteURIFunction() {
 		return request -> {
 			final HttpURI originalURI = request.getHttpURI();
+
 			final String applicationName = applicationNameFromURI( originalURI );
 
+			if( applicationName == null ) {
+				throw new IllegalArgumentException( "No application found with the name %s".formatted( applicationName ) );
+			}
+
+			final List<Instance> instances = adaptorConfig.application( applicationName ).instances();
+
+			if( instances.isEmpty() ) {
+				throw new IllegalStateException( "No instances registered for application %s".formatted( applicationName ) );
+			}
+
 			// FIXME: We're hardcoding targeting the first instance for testing // Hugi 2025-04-22
-			final Instance targetInstance = adaptorConfig.application( applicationName ).instances().getFirst();
+			final Instance targetInstance = instances.getFirst();
 
 			final String hostName = targetInstance.host();
 			final int port = targetInstance.port();
