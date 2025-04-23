@@ -1,1 +1,38 @@
-<p>Beep beep!</p>
+<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<title>Modulo</title>
+		<wo:stylesheet filename="tabler/css/tabler.min.css" />
+		<wo:script filename="tabler/js/tabler.min.js" />
+	</head>
+	<body>
+		<div class="page">
+			<div clas="container-xl">
+				<div class="row">
+					<div class="col-lg-6 col-md-10 col-sm-12">
+						<div class="card m-3">
+							<div class="card-header">
+								<h3>Applications and instances</h3>
+							</div>
+							<table class="table table-sm mb-0">
+								<wo:repetition list="$applications" item="$currentApplication"
+									<tr>
+										<td colspan="3"><strong><wo:str value="$currentApplication.name" /></strong></td>
+									</tr>
+									<wo:repetition list="$currentApplication.instances" item="$currentInstance">
+										<tr>
+											<td><wo:str value="$currentInstance.id" /></td>
+											<td><wo:str value="$currentInstance.host" /></td>
+											<td><wo:str value="$currentInstance.port" /></td>
+										</tr>
+									</wo:repetition>
+								</wo:repetition>
+							</table>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</body>
+</html>
