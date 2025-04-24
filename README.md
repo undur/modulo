@@ -23,6 +23,16 @@ This solves another problem with `mod_WebObjects` which is, really, that it's wr
 
 This also makes the "adaptor" independent of the web server. A standalone Java-based proxy adaptor can be used with any server that can act as a reverse proxy, Nginx, Caddy, Apache, HAProxy etc.
 
+## How would this work?
+
+This would make the setup of a WO adaptor for Apache mean (1) running the proxying application and (2) adding this something like this to the Apache config:
+
+```
+ProxyPreserveHost On
+ProxyPass /Apps/WebObjects http://proxyhost:1400/Apps/WebObjects
+ProxyPassReverse /Apps/WebObjects http://proxyhost:1400/Apps/WebObjects
+```
+
 ## Status
 
 The proxy functionality described above has been implemented in a basic way for testing and it certainly "looks like it works". A little more testing will reveal if it works well enough to be sensible/feasible, especially performance vise (although first tests look surprisingly promising in that regard).
