@@ -1,8 +1,9 @@
 package modulo;
 
+import java.io.ByteArrayInputStream;
 import java.util.concurrent.atomic.AtomicLong;
 
-import org.eclipse.jetty.http.HttpFields;
+import org.eclipse.jetty.io.Content;
 import org.eclipse.jetty.server.Handler;
 import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.server.Response;
@@ -50,12 +51,9 @@ public class FakeApplicationInstance {
 		@Override
 		public boolean handle( Request request, Response response, Callback callback ) throws Exception {
 
-			System.out.println( requestNumber.incrementAndGet() );
-
 			boolean skipHeaderLogging = !request.getHttpURI().toString().contains( "skipHeaderLogging" );
 
 			if( !skipHeaderLogging ) {
-				final HttpFields headers = request.getHeaders();
 				logger.info( "========== REQUEST =========" );
 				logger.info( "uri: {}", request.getHttpURI() );
 				logger.info( "headers: {}", request.getHeaders() );
@@ -63,7 +61,16 @@ public class FakeApplicationInstance {
 				System.out.println();
 			}
 
+			String responseString = "Serving request: " + requestNumber.getAndIncrement();
+			System.out.println( responseString );
+
+			final byte[] responseBytes = responseString.getBytes();
+			response.getHeaders().add( "content-length", responseBytes.length );
+
+			Content.copy( Content.Source.from( new ByteArrayInputStream( responseBytes ) ), response, callback );
+
 			callback.succeeded();
+
 			return true;
 		}
 	}
