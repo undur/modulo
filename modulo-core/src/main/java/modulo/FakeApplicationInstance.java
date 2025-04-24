@@ -1,5 +1,8 @@
 package modulo;
 
+import java.util.concurrent.atomic.AtomicLong;
+
+import org.eclipse.jetty.http.HttpFields;
 import org.eclipse.jetty.server.Handler;
 import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.server.Response;
@@ -16,6 +19,11 @@ import org.slf4j.LoggerFactory;
 public class FakeApplicationInstance {
 
 	private static final Logger logger = LoggerFactory.getLogger( FakeApplicationInstance.class );
+
+	/**
+	 * Globally keep track of the request number coming in
+	 */
+	private static final AtomicLong requestNumber = new AtomicLong();
 
 	public static void start( int port ) {
 
@@ -41,11 +49,20 @@ public class FakeApplicationInstance {
 
 		@Override
 		public boolean handle( Request request, Response response, Callback callback ) throws Exception {
-			logger.info( "========== REQUEST =========" );
-			logger.info( "uri: {}", request.getHttpURI() );
-			logger.info( "headers: {}", request.getHeaders() );
-			System.out.println();
-			System.out.println();
+
+			System.out.println( requestNumber.incrementAndGet() );
+
+			boolean skipHeaderLogging = !request.getHttpURI().toString().contains( "skipHeaderLogging" );
+
+			if( !skipHeaderLogging ) {
+				final HttpFields headers = request.getHeaders();
+				logger.info( "========== REQUEST =========" );
+				logger.info( "uri: {}", request.getHttpURI() );
+				logger.info( "headers: {}", request.getHeaders() );
+				System.out.println();
+				System.out.println();
+			}
+
 			callback.succeeded();
 			return true;
 		}
