@@ -33,6 +33,7 @@ public class AdaptorConfigParser {
 	// The password for wotaskd/JavaMonitor is provided as a system property. Note that the provided password must be the encoded password (as it appears in SiteConfig.xml)
 	private static final String wotaskdPassword = System.getProperty( "wotaskdpassword" );
 	private static final String wotaskdHost = "linode-4.rebbi.is";
+	private static final Object wotaskdPort = 1085;
 
 	public record Instance( int id, String host, int port ) {}
 
@@ -103,7 +104,7 @@ public class AdaptorConfigParser {
 	private static Document readConfigDocument() {
 
 		final HttpRequest request = HttpRequest
-				.newBuilder( URI.create( "http://%s:1085/Apps/WebObjects/wotaskd.woa/wa/woconfig".formatted( wotaskdHost ) ) )
+				.newBuilder( URI.create( "http://%s:%s/Apps/WebObjects/wotaskd.woa/wa/woconfig".formatted( wotaskdHost, wotaskdPort ) ) )
 				.headers( "password", wotaskdPassword )
 				.build();
 
