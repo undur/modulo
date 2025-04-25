@@ -1,4 +1,4 @@
-package modulo;
+package modulo.woadaptorconfig;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -7,9 +7,6 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse.BodyHandlers;
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 import java.util.Map.Entry;
 
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -21,6 +18,10 @@ import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 import org.xml.sax.SAXException;
 
+import modulo.woadaptorconfig.model.AdaptorConfig;
+import modulo.woadaptorconfig.model.App;
+import modulo.woadaptorconfig.model.Instance;
+
 /**
  * Parses wotaskd's adaptor config
  */
@@ -28,35 +29,33 @@ import org.xml.sax.SAXException;
 public class AdaptorConfigParser {
 
 	/**
-	 * FIXME: These should not be constants, and should both be configurable in a nice way // Hugi 2025-04-22
+	 * wotaskd host
 	 */
-	// The password for wotaskd/JavaMonitor is provided as a system property. Note that the provided password must be the encoded password (as it appears in SiteConfig.xml)
-	private static final String wotaskdPassword = System.getProperty( "wotaskdpassword" );
-	private static final String wotaskdHost = "linode-4.rebbi.is";
-	private static final Integer wotaskdPort = 1085;
+	private final String _wotaskdHost;
 
-	public record Instance( int id, String host, int port ) {}
+	/**
+	 * wotaskd port
+	 */
+	private final Integer _wotaskdPort;
 
-	public record Application( String name, List<Instance> instances ) {}
+	/**
+	 * wotaskd password, encoded (as it appears in SiteConfig.xml)
+	 */
+	private final String _wotaskdPassword;
 
-	public record AdaptorConfig( Map<String, Application> applications ) {
-
-		public AdaptorConfig() {
-			this( new HashMap<>() );
-		}
-
-		public Application application( String applicationName ) {
-			return applications.get( applicationName );
-		}
+	public AdaptorConfigParser( final String host, final int port, final String password ) {
+		_wotaskdHost = host;
+		_wotaskdPort = port;
+		_wotaskdPassword = password;
 	}
 
 	/**
 	 * @return The deserialized adaptor configuration, obtained from wotaskd
 	 */
-	public static AdaptorConfig adaptorConfig() {
+	public AdaptorConfig fetchAdaptorConfig() {
 		final AdaptorConfig config = new AdaptorConfig();
 
-		final Document siteConfig = readConfigDocument();
+		final Document siteConfig = fetchAdaptorConfigDocument();
 
 		final NodeList nodes = siteConfig
 				.getElementsByTagName( "adaptor" ).item( 0 )
@@ -73,7 +72,7 @@ public class AdaptorConfigParser {
 						.getNamedItem( "name" )
 						.getNodeValue();
 
-				final Application application = new Application( applicationName, new ArrayList<>() );
+				final App application = new App( applicationName, new ArrayList<>() );
 				config.applications().put( application.name(), application );
 
 				final NodeList instanceNodes = applicationNode.getChildNodes();
@@ -101,11 +100,11 @@ public class AdaptorConfigParser {
 	/**
 	 * @return The woadaptor configuration from wotaskd as a Document
 	 */
-	private static Document readConfigDocument() {
+	private Document fetchAdaptorConfigDocument() {
 
 		final HttpRequest request = HttpRequest
-				.newBuilder( URI.create( "http://%s:%s/Apps/WebObjects/wotaskd.woa/wa/woconfig".formatted( wotaskdHost, wotaskdPort ) ) )
-				.headers( "password", wotaskdPassword )
+				.newBuilder( URI.create( "http://%s:%s/Apps/WebObjects/wotaskd.woa/wa/woconfig".formatted( _wotaskdHost, _wotaskdPort ) ) )
+				.headers( "password", _wotaskdPassword )
 				.build();
 
 		try {
@@ -129,7 +128,9 @@ public class AdaptorConfigParser {
 	 */
 	public static void main( String[] args ) {
 
-		for( Entry<String, Application> entry : adaptorConfig().applications().entrySet() ) {
+		AdaptorConfigParser p = new AdaptorConfigParser( "linode-4.rebbi.is", 1085, System.getProperty( "wotaskdpassword" ) );
+
+		for( Entry<String, App> entry : p.fetchAdaptorConfig().applications().entrySet() ) {
 			var application = entry.getValue();
 			System.out.println( "======= " + application.name() );
 			for( Instance instance : application.instances() ) {

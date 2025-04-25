@@ -15,9 +15,10 @@ import org.eclipse.jetty.server.ServerConnector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import modulo.AdaptorConfigParser.AdaptorConfig;
-import modulo.AdaptorConfigParser.Application;
-import modulo.AdaptorConfigParser.Instance;
+import modulo.woadaptorconfig.AdaptorConfigParser;
+import modulo.woadaptorconfig.model.AdaptorConfig;
+import modulo.woadaptorconfig.model.App;
+import modulo.woadaptorconfig.model.Instance;
 
 /**
  * A jetty-based reverse proxy, meant to potentially replace mod_WebObjects
@@ -74,17 +75,22 @@ public class Modulo {
 	 */
 	private static AdaptorConfig fetchAdaptorConfig() {
 
-		if( System.getProperty( "wotaskdpassword" ) != null ) {
-			System.out.println( "wOOt!" );
-			return AdaptorConfigParser.adaptorConfig();
+		AdaptorConfig config;
+
+		final String password = System.getProperty( "wotaskdpassword" );
+
+		if( password != null ) {
+			config = new AdaptorConfigParser( "linode-4.rebbi.is", 1085, password ).fetchAdaptorConfig();
+		}
+		else {
+			// If the password is not set, we fire up the test server and return an adaptor configuration pointing to it
+			final Instance instance = new Instance( 1, "localhost", 1500 );
+			final App app = new App( "Fake", List.of( instance ) );
+			config = new AdaptorConfig( Map.of( "Fake", app ) );
+
+			FakeApplicationInstance.start( 1500 );
 		}
 
-		// If the password is not set, we fire up the test server and return an adaptor configuration pointing to it
-		FakeApplicationInstance.start( 1500 );
-
-		final Instance instance = new Instance( 1, "localhost", 1500 );
-		final modulo.AdaptorConfigParser.Application app = new modulo.AdaptorConfigParser.Application( "Fake", List.of( instance ) );
-		final AdaptorConfig config = new AdaptorConfig( Map.of( "Fake", app ) );
 		return config;
 	}
 
@@ -115,7 +121,7 @@ public class Modulo {
 
 			final String applicationName = applicationNameFromURI( originalURI );
 
-			final Application application = adaptorConfig.application( applicationName );
+			final App application = adaptorConfig.application( applicationName );
 
 			if( application == null ) {
 				throw new IllegalArgumentException( "No application found with the name %s".formatted( applicationName ) );
