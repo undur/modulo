@@ -53,7 +53,7 @@ public class FakeApplicationInstance {
 
 			boolean skipHeaderLogging = !request.getHttpURI().toString().contains( "skipHeaderLogging" );
 
-			if( !skipHeaderLogging ) {
+			if( skipHeaderLogging ) {
 				logger.info( "========== REQUEST =========" );
 				logger.info( "uri: {}", request.getHttpURI() );
 				logger.info( "headers: {}", request.getHeaders() );
