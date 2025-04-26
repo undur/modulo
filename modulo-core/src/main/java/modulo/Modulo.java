@@ -64,6 +64,10 @@ public class Modulo {
 		}
 	}
 
+	public static void reloadAdaptorConfig() {
+		adaptorConfig = fetchAdaptorConfig();
+	}
+
 	public static AdaptorConfig adaptorConfig() {
 		return adaptorConfig;
 	}
