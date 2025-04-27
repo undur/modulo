@@ -84,7 +84,7 @@ public class Modulo {
 		final String password = System.getProperty( "wotaskdpassword" );
 
 		if( password != null ) {
-			config = new AdaptorConfigParser( "linode-4.rebbi.is", 1085, password ).fetchAdaptorConfig();
+			config = new AdaptorConfigParser( "hz1.rebbi.is", 1085, password ).fetchAdaptorConfig();
 		}
 		else {
 			// If the password is not set, we fire up the test server and return an adaptor configuration pointing to it
@@ -158,7 +158,7 @@ public class Modulo {
 	/**
 	 * @return The name of the application from the given URI
 	 */
-	private static String applicationNameFromURI( final HttpURI uri ) {
+	static String applicationNameFromURI( final HttpURI uri ) {
 		final String[] splitPath = uri.getPath().split( "/" );
 		String applicationName = splitPath[3];
 
