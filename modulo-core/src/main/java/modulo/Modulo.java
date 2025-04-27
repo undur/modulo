@@ -89,8 +89,8 @@ public class Modulo {
 		else {
 			// If the password is not set, we fire up the test server and return an adaptor configuration pointing to it
 			final Instance instance = new Instance( 1, "localhost", 1500 );
-			final App app = new App( "Fake", List.of( instance ) );
-			config = new AdaptorConfig( Map.of( "Fake", app ) );
+			final App app = new App( "FakeApp", List.of( instance ) );
+			config = new AdaptorConfig( Map.of( "FakeApp", app ) );
 
 			FakeApplicationInstance.start( 1500 );
 		}
