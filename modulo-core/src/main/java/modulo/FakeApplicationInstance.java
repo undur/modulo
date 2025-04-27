@@ -26,6 +26,12 @@ public class FakeApplicationInstance {
 	 */
 	private static final AtomicLong requestNumber = new AtomicLong();
 
+	/**
+	 * FIXME: Horrid way to check if the fake instance is already running // Hugi 2025-04-27
+	 */
+	@Deprecated
+	public static boolean running = false;
+
 	public static void start( int port ) {
 
 		logger.info( "Starting fake application instance for logging" );
@@ -38,6 +44,7 @@ public class FakeApplicationInstance {
 
 		try {
 			server.start();
+			running = true;
 		}
 		catch( final Exception e ) {
 			logger.info( "Modulo startup failed" );
@@ -51,9 +58,9 @@ public class FakeApplicationInstance {
 		@Override
 		public boolean handle( Request request, Response response, Callback callback ) throws Exception {
 
-			boolean skipHeaderLogging = !request.getHttpURI().toString().contains( "skipHeaderLogging" );
+			boolean logHeaders = request.getHttpURI().toString().contains( "logHeaders" );
 
-			if( skipHeaderLogging ) {
+			if( logHeaders ) {
 				logger.info( "========== REQUEST =========" );
 				logger.info( "uri: {}", request.getHttpURI() );
 				logger.info( "headers: {}", request.getHeaders() );
