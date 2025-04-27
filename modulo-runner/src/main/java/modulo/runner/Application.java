@@ -8,7 +8,7 @@ public class Application extends NGApplication {
 
 	public static void main( String[] args ) {
 		NGApplication.run( args, Application.class );
-		Modulo.main( args );
+		Modulo.start();
 	}
 
 	@Override

@@ -1,13 +1,15 @@
 package modulo;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Timer;
+import java.util.TimerTask;
 import java.util.UUID;
 import java.util.function.Function;
 
 import org.eclipse.jetty.http.HttpScheme;
 import org.eclipse.jetty.http.HttpURI;
-import org.eclipse.jetty.http.HttpURI.Mutable;
 import org.eclipse.jetty.proxy.ProxyHandler;
 import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.server.Server;
@@ -36,6 +38,8 @@ public class Modulo {
 
 	/**
 	 * The port to run the proxy on
+	 *
+	 * FIXME: This should most definitely not be static and should be regularly updated // Hugi 2025-04-22
 	 */
 	private static final int PORT = 1400;
 
@@ -44,7 +48,7 @@ public class Modulo {
 	 */
 	private static AdaptorConfig adaptorConfig = fetchAdaptorConfig();
 
-	public static void main( String[] argv ) {
+	public static void start() {
 
 		logger.info( "Starting modulo" );
 
@@ -62,6 +66,8 @@ public class Modulo {
 			e.printStackTrace();
 			System.exit( -1 );
 		}
+
+		startAdaptorConfigAutoReloader();
 	}
 
 	public static void reloadAdaptorConfig() {
@@ -70,6 +76,20 @@ public class Modulo {
 
 	public static AdaptorConfig adaptorConfig() {
 		return adaptorConfig;
+	}
+
+	private static void startAdaptorConfigAutoReloader() {
+		final TimerTask adaptorConfigReloadTask = new TimerTask() {
+			@Override
+			public void run() {
+				reloadAdaptorConfig();
+			}
+		};
+
+		final Timer timer = new Timer( "AdaptorConfigReloader", true );
+		final long timeBeforeFirstExecution = Duration.ofSeconds( 0 ).toMillis();
+		final long timeBetweenExecutions = Duration.ofSeconds( 10 ).toMillis();
+		timer.schedule( adaptorConfigReloadTask, timeBeforeFirstExecution, timeBetweenExecutions ); // CHECKME: The execution times might need configuration // Hugi 2023-01-21
 	}
 
 	/**
@@ -84,7 +104,9 @@ public class Modulo {
 		final String password = System.getProperty( "wotaskdpassword" );
 
 		if( password != null ) {
-			config = new AdaptorConfigParser( "hz1.rebbi.is", 1085, password ).fetchAdaptorConfig();
+			final int port = 1085;
+			final String host = "hz1.rebbi.is";
+			config = new AdaptorConfigParser( host, port, password ).fetchAdaptorConfig();
 		}
 		else {
 			// If the password is not set, we fire up the test server and return an adaptor configuration pointing to it
@@ -92,7 +114,9 @@ public class Modulo {
 			final App app = new App( "FakeApp", List.of( instance ) );
 			config = new AdaptorConfig( Map.of( "FakeApp", app ) );
 
-			FakeApplicationInstance.start( 1500 );
+			if( !FakeApplicationInstance.running ) {
+				FakeApplicationInstance.start( 1500 );
+			}
 		}
 
 		return config;
@@ -143,7 +167,7 @@ public class Modulo {
 			final String hostName = targetInstance.host();
 			final int port = targetInstance.port();
 
-			final Mutable targetURI = HttpURI
+			final HttpURI.Mutable targetURI = HttpURI
 					.build( originalURI )
 					.host( hostName )
 					.scheme( HttpScheme.HTTP )
@@ -160,11 +184,23 @@ public class Modulo {
 	 */
 	static String applicationNameFromURI( final HttpURI uri ) {
 		final String[] splitPath = uri.getPath().split( "/" );
+
+		if( splitPath.length < 4 ) {
+			throw new IllegalArgumentException( "URL too short" );
+		}
+
 		String applicationName = splitPath[3];
 
 		// Remove the .woa from the application name
 		applicationName = applicationName.split( "\\." )[0];
 
 		return applicationName;
+	}
+
+	/**
+	 * FIXME: Main method included for testing only // Hugi 2025-04-27
+	 */
+	public static void main( String[] argv ) {
+		start();
 	}
 }
