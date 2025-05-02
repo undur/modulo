@@ -18,7 +18,7 @@ public class Application extends NGApplication {
 	}
 
 	/**
-	 * @return Our modulo instance, for checking out configuration and such fin
+	 * @return Our modulo instance, for checking out configuration, status and statistics
 	 */
 	public Modulo modulo() {
 		return _modulo;

@@ -41,12 +41,16 @@ public class Modulo {
 	private final int port;
 
 	/**
-	 * FIXME: This should most definitely not be static and should be regularly updated // Hugi 2025-04-22
+	 * FIXME: We're going to want to hold multiple adaptor configuration sources // Hugi 2025-05-02
 	 */
-	private static AdaptorConfig adaptorConfig = fetchAdaptorConfig();
+	private AdaptorConfig adaptorConfig;
 
+	/**
+	 * Construct a new instance running the proxy on the given port 
+	 */
 	public Modulo( final int port ) {
 		this.port = port;
+		this.adaptorConfig = fetchAdaptorConfig();
 	}
 
 	public void start() {
@@ -71,15 +75,15 @@ public class Modulo {
 		startAdaptorConfigAutoReloader();
 	}
 
-	public static void reloadAdaptorConfig() {
+	public void reloadAdaptorConfig() {
 		adaptorConfig = fetchAdaptorConfig();
 	}
 
-	public static AdaptorConfig adaptorConfig() {
+	public AdaptorConfig adaptorConfig() {
 		return adaptorConfig;
 	}
 
-	private static void startAdaptorConfigAutoReloader() {
+	private void startAdaptorConfigAutoReloader() {
 		final TimerTask adaptorConfigReloadTask = new TimerTask() {
 			@Override
 			public void run() {
@@ -126,7 +130,7 @@ public class Modulo {
 	/**
 	 * @return A Function that generates the instance URI to target
 	 */
-	public static Function<Request, HttpURI> rewriteURIFunction() {
+	public Function<Request, HttpURI> rewriteURIFunction() {
 		return request -> {
 			final HttpURI originalURI = request.getHttpURI();
 

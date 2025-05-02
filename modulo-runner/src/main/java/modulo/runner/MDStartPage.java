@@ -6,6 +6,7 @@ import modulo.Modulo;
 import modulo.woadaptorconfig.model.App;
 import modulo.woadaptorconfig.model.Instance;
 import ng.appserver.NGActionResults;
+import ng.appserver.NGApplication;
 import ng.appserver.NGContext;
 import ng.appserver.templating.NGComponent;
 
@@ -18,13 +19,17 @@ public class MDStartPage extends NGComponent {
 		super( context );
 	}
 
+	private Modulo modulo() {
+		return ((Application)NGApplication.application()).modulo();
+	}
+
 	public NGActionResults reloadAdaptorConfig() {
-		Modulo.reloadAdaptorConfig();
+		modulo().reloadAdaptorConfig();
 		return null;
 	}
 
 	public List<App> applications() {
-		return Modulo
+		return modulo()
 				.adaptorConfig()
 				.applications()
 				.values()
