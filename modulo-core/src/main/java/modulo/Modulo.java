@@ -21,13 +21,14 @@ import modulo.woadaptorconfig.model.App;
 import modulo.woadaptorconfig.model.Instance;
 
 /**
- * A jetty-based reverse proxy, meant to potentially replace mod_WebObjects
+ * A jetty-based reverse proxy
  *
  * FIXME: We're currently always targeting the first instance. Here's where a load balacing scheme might come in strong... // Hugi 2025-04-22
  * FIXME: Oh, and we're going to have to target the correct instance based on the request URL // Hugi 2025-04-22
  * FIXME: We might want to gather some statistics and logging // Hugi 2025-04-22
- * FIXME: We're missing configuration options for ... everything // Hugi 2025-04-22
  * FIXME: Adaptor config needs to be regularly updated/manually updatable // Hugi 2025-04-22
+ * FIXME: We're missing configuration options for ... everything // Hugi 2025-04-22
+ * FIXME: Add some nice error pages // Hugi 2025-04-22
  */
 
 public class Modulo {
@@ -35,24 +36,26 @@ public class Modulo {
 	private static Logger logger = LoggerFactory.getLogger( Modulo.class );
 
 	/**
-	 * The port to run the proxy on
-	 *
-	 * FIXME: This should most definitely not be static and should be regularly updated // Hugi 2025-04-22
+	 * The port to the proxy will run on
 	 */
-	private static final int PORT = 1400;
+	private final int port;
 
 	/**
 	 * FIXME: This should most definitely not be static and should be regularly updated // Hugi 2025-04-22
 	 */
 	private static AdaptorConfig adaptorConfig = fetchAdaptorConfig();
 
-	public static void start() {
+	public Modulo( final int port ) {
+		this.port = port;
+	}
+
+	public void start() {
 
 		logger.info( "Starting modulo" );
 
 		final Server server = new Server();
 		final ServerConnector connector = new ServerConnector( server );
-		connector.setPort( PORT );
+		connector.setPort( port );
 		server.addConnector( connector );
 		server.setHandler( new ModuloProxy( rewriteURIFunction() ) );
 
@@ -178,9 +181,9 @@ public class Modulo {
 	}
 
 	/**
-	 * FIXME: Main method included for testing only // Hugi 2025-04-27
+	 * Main method included for quick testing
 	 */
 	public static void main( String[] argv ) {
-		start();
+		new Modulo( 1400 ).start();
 	}
 }
