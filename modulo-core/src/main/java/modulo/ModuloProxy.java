@@ -31,5 +31,10 @@ class ModuloProxy extends ProxyHandler.Reverse {
 		// Apache would by default set this to the IP-address, which we do, but it also provided the option of
 		// resolving this to the client's hostname by setting "HostnameLookups On", which we We currently don't do // Hugi 2025-055-07
 		proxyToServerRequest.headers( headers -> headers.add( "remote_host", clientAddress ) ); // Why mod_WebObjects sends the request method, already an explicit part of the request, as a header as well, I have no idea. But it can't hurt emulating it
+
+		// By default, Jetty will add itself to the list of user agents on the forwarded request (making the user-agent field containing multiple values, which may confuse some apps)
+		// CHECKME: We're correcting a mistake really just made by ourselves so this feels hacky. Ideally, we'd instruct Jetty to never modify the user-agent header in the first place //Hugi 2025-05-07
+		final String clientUserAgent = clientToProxyRequest.getHeaders().get( "user-agent" );
+		proxyToServerRequest.headers( headers -> headers.put( "user-agent", clientUserAgent ) );
 	}
 }
