@@ -24,16 +24,16 @@ class ModuloProxy extends ProxyHandler.Reverse {
 		proxyToServerRequest.headers( headers -> headers.add( "x-webobjects-request-method", clientToProxyRequest.getMethod() ) ); // Why mod_WebObjects sends the request method, already an explicit part of the request, as a header as well, I have no idea. But it can't hurt emulating it
 
 		// Add the remote IP-address
-		String clientAddress = Request.getRemoteAddr( clientToProxyRequest );
-		proxyToServerRequest.headers( headers -> headers.add( "remote_addr", clientAddress ) ); // Why mod_WebObjects sends the request method, already an explicit part of the request, as a header as well, I have no idea. But it can't hurt emulating it
+		final String clientIPAddress = Request.getRemoteAddr( clientToProxyRequest );
+		proxyToServerRequest.headers( headers -> headers.add( "remote_addr", clientIPAddress ) );
 
-		// FIXME: We're also putting the IP in to the remote_host header since it was always provided by mod_WebObjects
-		// Apache would by default set this to the IP-address, which we do, but it also provided the option of
-		// resolving this to the client's hostname by setting "HostnameLookups On", which we We currently don't do // Hugi 2025-055-07
-		proxyToServerRequest.headers( headers -> headers.add( "remote_host", clientAddress ) ); // Why mod_WebObjects sends the request method, already an explicit part of the request, as a header as well, I have no idea. But it can't hurt emulating it
+		// CHECKME: We're also putting the IP in to the remote_host header since it was always provided by mod_WebObjects.
+		// Apache would by default set this to the IP-address, which we do, but it also provided the option of resolving
+		// this to the client's hostname by setting "HostnameLookups On", which we currently don't do // Hugi 2025-055-07
+		proxyToServerRequest.headers( headers -> headers.add( "remote_host", clientIPAddress ) );
 
 		// By default, Jetty will add itself to the list of user agents on the forwarded request (making the user-agent field containing multiple values, which may confuse some apps)
-		// CHECKME: We're correcting a mistake really just made by ourselves so this feels hacky. Ideally, we'd instruct Jetty to never modify the user-agent header in the first place //Hugi 2025-05-07
+		// CHECKME: We're correcting a mistake really just made by ourselves so this feels hacky. Ideally, we'd instruct Jetty to never modify the user-agent header in the first place // Hugi 2025-05-07
 		final String clientUserAgent = clientToProxyRequest.getHeaders().get( "user-agent" );
 		proxyToServerRequest.headers( headers -> headers.put( "user-agent", clientUserAgent ) );
 	}
