@@ -6,7 +6,7 @@ Modulo is a Java/Jetty-based replacement for the WebObjects Apache adaptor `mod_
 
 One of the problems with setting up a modern WO deployment environment is the Apache adaptor. The adaptor needs to be compiled, some dark configuration chants need to be recited, and after all that you're stuck with an Apache server that can't even serve HTTP/2.
 
-Some avoid this by replacing the adaptor with Apache's `mod_proxy` or some other generic web proxying software, but doing so means losing a lot of the management benefits one gets from managing WO deployment environments using `JavaMonitor` and `wotaskd`.
+Some avoid this by replacing the adaptor with Apache's `mod_proxy` or some other generic web proxying software, but doing so means losing a lot of the management benefits provided by `JavaMonitor` and `wotaskd`.
 
 ## The solution?
 
