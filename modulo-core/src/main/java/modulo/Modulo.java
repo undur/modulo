@@ -150,9 +150,9 @@ public class Modulo {
 		}
 		else {
 			// If the password is not set, we fire up the test server and return an adaptor configuration pointing to it
-			final Instance instance = new Instance( 1, "localhost", 1500 );
-			final App app = new App( "FakeApp", List.of( instance ) );
-			config = new AdaptorConfig( Map.of( "FakeApp", app ) );
+			final App fakeApp = new App( "FakeApp", List.of( new Instance( 1, "localhost", 1500 ) ) );
+			final App localApp = new App( "LocalApp", List.of( new Instance( 1, "localhost", 1200 ) ) );
+			config = new AdaptorConfig( Map.of( "FakeApp", fakeApp, "LocalApp", localApp ) );
 
 			if( !FakeApplicationInstance.running ) {
 				FakeApplicationInstance.start( 1500 );
@@ -205,7 +205,13 @@ public class Modulo {
 	 * @return The name of the application from the given URI
 	 */
 	static String applicationNameFromURI( final HttpURI uri ) {
-		String appName = uri.getPath().substring( ADAPTOR_URL.length() );
+		final String uriString = uri.getPath();
+
+		if( !uriString.startsWith( ADAPTOR_URL ) ) {
+			throw new IllegalArgumentException( "The uri '%s' does not start with an adaptor URL".formatted( uriString ) );
+		}
+
+		String appName = uriString.substring( ADAPTOR_URL.length() );
 
 		int periodIndex = appName.indexOf( ".woa" );
 
