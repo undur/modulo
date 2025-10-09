@@ -29,11 +29,18 @@ import modulo.woadaptorconfig.model.Instance;
  * FIXME: Adaptor config needs to be regularly updated/manually updatable // Hugi 2025-04-22
  * FIXME: We're missing configuration options for ... everything // Hugi 2025-04-22
  * FIXME: Add some nice error pages // Hugi 2025-04-22
+ * FIXME: Target application based on domain // Hugi 2025-10-09
+ * FIXME: Shutdown/startup of an application in a related wotaskd should really trigger an adaptor reload // Hugi 2025-10-09
  */
 
 public class Modulo {
 
 	private static Logger logger = LoggerFactory.getLogger( Modulo.class );
+
+	/**
+	 * Duration between reloads of adaptor configuration
+	 */
+	private static final Duration DEFAULT_CONFIG_RELOAD_DURATION = Duration.ofSeconds( 10 );
 
 	/**
 	 * The port to the proxy will run on
@@ -46,7 +53,7 @@ public class Modulo {
 	private AdaptorConfig adaptorConfig;
 
 	/**
-	 * Construct a new instance running the proxy on the given port 
+	 * Construct a new instance running the proxy on the given port
 	 */
 	public Modulo( final int port ) {
 		this.port = port;
@@ -93,8 +100,8 @@ public class Modulo {
 
 		final Timer timer = new Timer( "AdaptorConfigReloader", true );
 		final long timeBeforeFirstExecution = Duration.ofSeconds( 0 ).toMillis();
-		final long timeBetweenExecutions = Duration.ofSeconds( 10 ).toMillis();
-		timer.schedule( adaptorConfigReloadTask, timeBeforeFirstExecution, timeBetweenExecutions ); // CHECKME: The execution times might need configuration // Hugi 2023-01-21
+		final long timeBetweenExecutions = DEFAULT_CONFIG_RELOAD_DURATION.toMillis();
+		timer.schedule( adaptorConfigReloadTask, timeBeforeFirstExecution, timeBetweenExecutions );
 	}
 
 	/**
