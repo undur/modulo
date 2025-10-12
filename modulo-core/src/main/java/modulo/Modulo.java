@@ -99,6 +99,7 @@ public class Modulo {
 		connector.setPort( _port );
 		server.addConnector( connector );
 		server.setHandler( new ModuloProxy( rewriteURIFunction() ) );
+		server.setErrorHandler( new ModuloProxy.ModuloErrorHandler() );
 
 		try {
 			server.start();
