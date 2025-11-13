@@ -35,6 +35,11 @@
 			<version>12.1.4</version>
 		</dependency>
 		<dependency>
+			<groupId>org.eclipse.jetty.http2</groupId>
+			<artifactId>jetty-http2-client-transport</artifactId>
+			<version>12.1.4</version>
+		</dependency>
+		<dependency>
 			<groupId>org.slf4j</groupId>
 			<artifactId>slf4j-simple</artifactId>
 			<version>2.0.17</version>
