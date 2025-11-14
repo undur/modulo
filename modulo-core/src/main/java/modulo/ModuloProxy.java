@@ -5,76 +5,21 @@ import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 import java.util.function.Function;
 
-import org.eclipse.jetty.client.HttpClient;
 import org.eclipse.jetty.client.Response;
-import org.eclipse.jetty.client.transport.HttpClientTransportDynamic;
 import org.eclipse.jetty.http.HttpURI;
-import org.eclipse.jetty.http2.client.HTTP2Client;
-import org.eclipse.jetty.http2.client.transport.ClientConnectionFactoryOverHTTP2;
-import org.eclipse.jetty.io.ClientConnector;
 import org.eclipse.jetty.io.Content;
 import org.eclipse.jetty.proxy.ProxyHandler;
 import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.server.handler.ErrorHandler;
 import org.eclipse.jetty.util.Callback;
-import org.eclipse.jetty.util.thread.QueuedThreadPool;
 
 /**
  * Subclass of Jetty's proxy handler, allows us to make required modifications to the proxied request before forwarding it to the instance
  */
 class ModuloProxy extends ProxyHandler.Reverse {
 
-	/**
-	 * Shared HTTP client for all proxy connections.
-	 * Uses dynamic transport that prefers HTTP/2 cleartext (h2c) but falls back to HTTP/1.1.
-	 * This allows Modulo to work with both modern (wo-jetty-adaptor with h2c) and legacy adaptors.
-	 */
-	private static final HttpClient HTTP2_CLIENT = createHTTP2Client();
-
-	private static HttpClient createHTTP2Client() {
-		// Create dedicated thread pool for proxy client operations (separate from server threads)
-		final QueuedThreadPool proxyClientThreads = new QueuedThreadPool();
-		proxyClientThreads.setName( "modulo-proxy-client" );
-		// Configure thread pool size based on expected load
-		// Default: min=8, max=200 threads
-		proxyClientThreads.setMinThreads( 8 );
-		proxyClientThreads.setMaxThreads( 200 );
-
-		// Create client connector with dedicated thread pool
-		final ClientConnector clientConnector = new ClientConnector();
-		clientConnector.setExecutor( proxyClientThreads );
-
-		// Create HTTP/2 client
-		final HTTP2Client http2Client = new HTTP2Client( clientConnector );
-		final ClientConnectionFactoryOverHTTP2.HTTP2 http2 = new ClientConnectionFactoryOverHTTP2.HTTP2( http2Client );
-
-		// Dynamic transport with HTTP/2 preferred, HTTP/1.1 fallback
-		// Protocols are tried in order: h2c first, then HTTP/1.1
-		final HttpClientTransportDynamic transport = new HttpClientTransportDynamic( clientConnector, http2 );
-
-		final HttpClient client = new HttpClient( transport );
-
-		// Configure for optimal performance
-		client.setMaxConnectionsPerDestination( 32 ); // Limit connections per WO instance (h2c multiplexing means we need fewer)
-		client.setIdleTimeout( 300000 ); // Keep connections alive for 5 minutes
-
-		try {
-			client.start();
-		}
-		catch( Exception e ) {
-			throw new RuntimeException( "Failed to start HTTP client", e );
-		}
-
-		return client;
-	}
-
 	public ModuloProxy( Function<Request, HttpURI> httpURIRewriter ) {
 		super( httpURIRewriter );
-	}
-
-	@Override
-	protected HttpClient newHttpClient() {
-		return HTTP2_CLIENT;
 	}
 
 	@Override
