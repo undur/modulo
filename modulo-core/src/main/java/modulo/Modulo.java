@@ -9,6 +9,8 @@ import java.util.function.Function;
 
 import org.eclipse.jetty.http.HttpScheme;
 import org.eclipse.jetty.http.HttpURI;
+import org.eclipse.jetty.server.HttpConfiguration;
+import org.eclipse.jetty.server.HttpConnectionFactory;
 import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.ServerConnector;
@@ -95,7 +97,12 @@ public class Modulo {
 		logger.info( "Starting modulo" );
 
 		final Server server = new Server();
-		final ServerConnector connector = new ServerConnector( server );
+
+		final HttpConfiguration httpConfig = new HttpConfiguration();
+		httpConfig.setSendServerVersion( false ); // Not sending the server software/version is good practice for security
+
+		final HttpConnectionFactory connectionFactory = new HttpConnectionFactory( httpConfig );
+		final ServerConnector connector = new ServerConnector( server, connectionFactory );
 		connector.setPort( _port );
 		server.addConnector( connector );
 		server.setHandler( new ModuloProxy( rewriteURIFunction() ) );
