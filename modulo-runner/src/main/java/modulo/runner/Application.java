@@ -13,7 +13,7 @@ public class Application extends NGApplication {
 	}
 
 	public Application() {
-		_modulo = new Modulo( 1400 );
+		_modulo = new Modulo( Config.MODULO_PROXY_PORT );
 		_modulo.start();
 	}
 
