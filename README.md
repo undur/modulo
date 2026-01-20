@@ -18,9 +18,29 @@ Modulo uses `jetty-proxy` to provide reverse proxying specifically tailored for 
 
 Since Modulo is written in Java, it's easier than `mod_WebObjects` for most WO developers to understand, maintain, debug and extend. And since it's a standalone application, it works with any web server software that can act as a reverse proxy such as Nginx, Caddy, Apache and HAProxy.
 
-## Configuration
+## Current state
 
-If you're using Apache, just run Modulo and add the following to your global config (given Modulo is running on port 1400 and your "adaptor URL" is /Apps/WebObjects):
+Modulo has been running fine in several deployment environments (Debian 12 with Apache serving up HTTP/2 as the web server) for a few months without a problem. However, the focus has been on testing the proxying so it currently doesn't offer much in the way of configuration and only supports running one instance per application.
+
+## Running the proxy
+
+The Modulo proxy is run using the modulo-runner application. It's started up like any other WO application, with some java system parameters set for communicating with wotaskd. The parameters are:
+
+```
+modulo.wotaskd.host
+modulo.wotaskd.port
+modulo.wotaskd.password
+```
+
+An example application run would thus look like:
+
+```
+# ./modulo-runner -Dmodulo.wotaskd.host=[yourhost] -Dmodulo.wotaskd.port=[yourport] -Dmodulo.wotaskd.password=[yourpass]
+```
+
+## Web Server Configuration
+
+If you're using Apache, just add the following to your global config (given Modulo is running on it's default port 1400 and your "adaptor URL" is /Apps/WebObjects):
 
 ```
 ProxyPreserveHost On
@@ -28,9 +48,6 @@ ProxyPass /Apps/WebObjects http://proxyhost:1400/Apps/WebObjects
 ProxyPassReverse /Apps/WebObjects http://proxyhost:1400/Apps/WebObjects
 ```
 
-## Does this actually work?
-
-Modulo has been running in several deployment environments (Debian 12 with Apache serving up HTTP/2 as the web server) for a few months without any noticable problems.
 
 ## Future plans
 

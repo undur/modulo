@@ -75,21 +75,42 @@ public class Modulo {
 	 * @return The host wotaskd is running on
 	 */
 	public static String wotaskdHost() {
-		return "hz1.rebbi.is";
+		return getRequiredProperty( "modulo.wotaskd.host" );
 	}
 
 	/**
 	 * @return Port number to fetch wotaskd's configuration from
 	 */
 	public static int wotaskdPort() {
-		return 1085;
+		return Integer.parseInt( getRequiredProperty( "modulo.wotaskd.port" ) );
 	}
 
 	/**
 	 * @return The password for getting configuration from the targeted wotaskd instance
 	 */
 	public static String wotaskdPassword() {
-		return System.getProperty( "wotaskdpassword" );
+		return getRequiredProperty( "modulo.wotaskd.password" );
+	}
+
+	/**
+	 * @return True if we want to run without wotaskd for running testing
+	 */
+	public static boolean isTesting() {
+		return "true".equals( System.getProperty( "modulo.testing" ) );
+	}
+
+	/**
+	 * @return The value of the java System property [propertyName]
+	 * @throws IllegalStateException if the property is not set
+	 */
+	private static String getRequiredProperty( final String propertyName ) {
+		final String value = System.getProperty( propertyName );
+
+		if( value == null ) {
+			throw new IllegalStateException( "The system property %s is not set".formatted( propertyName ) );
+		}
+
+		return value;
 	}
 
 	public void start() {
@@ -147,27 +168,23 @@ public class Modulo {
 	 */
 	private static AdaptorConfig fetchAdaptorConfig() {
 
-		AdaptorConfig config;
-
-		final String password = wotaskdPassword();
-
-		if( password != null ) {
-			final int port = wotaskdPort();
-			final String host = wotaskdHost();
-			config = new AdaptorConfigParser( host, port, password ).fetchAdaptorConfig();
-		}
-		else {
-			// If the password is not set, we fire up the test server and return an adaptor configuration pointing to it
+		if( isTesting() ) {
+			// If we're testing,fire up a test application and return an adaptor configuration pointing to it
 			final App fakeApp = new App( "FakeApp", List.of( new Instance( 1, "localhost", 1500 ) ) );
 			final App localApp = new App( "LocalApp", List.of( new Instance( 1, "localhost", 1200 ) ) );
-			config = new AdaptorConfig( Map.of( "FakeApp", fakeApp, "LocalApp", localApp ) );
+			AdaptorConfig config = new AdaptorConfig( Map.of( "FakeApp", fakeApp, "LocalApp", localApp ) );
 
 			if( !FakeApplicationInstance.running ) {
 				FakeApplicationInstance.start( 1500 );
 			}
+
+			return config;
 		}
 
-		return config;
+		final String host = wotaskdHost();
+		final int port = wotaskdPort();
+		final String password = wotaskdPassword();
+		return new AdaptorConfigParser( host, port, password ).fetchAdaptorConfig();
 	}
 
 	/**
