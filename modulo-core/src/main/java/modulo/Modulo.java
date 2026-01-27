@@ -230,10 +230,20 @@ public class Modulo {
 	 * @return The name of the application from the given URI
 	 */
 	static String applicationNameFromURI( final HttpURI uri ) {
+
 		final String uriString = uri.getPath();
 
 		if( !uriString.startsWith( ADAPTOR_URL ) ) {
-			throw new IllegalArgumentException( "The uri '%s' does not start with an adaptor URL".formatted( uriString ) );
+			final String host = uri.getHost();
+
+			System.out.println( "No adaptor URL prefix present, trying domain" );
+
+			// FIXME: Hardcoding domain for testing, should come from config // Hugi 2026-01-27
+			if( "www.hugi.io".equals( host ) ) {
+				return "Hugi";
+			}
+
+			throw new IllegalArgumentException( "The uri '%s' does not start with an adaptor URL and we're not serving a known domain".formatted( uriString ) );
 		}
 
 		String appName = uriString.substring( ADAPTOR_URL.length() );
