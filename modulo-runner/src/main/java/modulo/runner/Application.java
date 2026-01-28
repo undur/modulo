@@ -2,6 +2,7 @@ package modulo.runner;
 
 import modulo.Modulo;
 import ng.appserver.NGApplication;
+import ng.appserver.NGResponse;
 import ng.plugins.Routes;
 
 public class Application extends NGApplication {
@@ -28,6 +29,7 @@ public class Application extends NGApplication {
 	public Routes routes() {
 		return Routes
 				.create()
+				.map( "/WOAdaptorInfo", request -> new NGResponse( _modulo.adaptorConfig().toString(), 200 ) )
 				.map( "/", MDStartPage.class );
 	}
 }

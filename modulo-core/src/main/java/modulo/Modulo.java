@@ -1,6 +1,7 @@
 package modulo;
 
 import java.time.Duration;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Timer;
@@ -68,7 +69,8 @@ public class Modulo {
 	 */
 	public Modulo( final int port ) {
 		_port = port;
-		_adaptorConfig = fetchAdaptorConfig();
+
+		reloadAdaptorConfig();
 	}
 
 	/**
@@ -143,6 +145,13 @@ public class Modulo {
 
 	public void reloadAdaptorConfig() {
 		_adaptorConfig = fetchAdaptorConfig();
+
+		// FIXME: Hardcoded modulo reference should not really be present // Hugi 2026-01-28
+		final Map<String, App> applications = new HashMap<>( _adaptorConfig.applications() );
+		final App moduloApp = new App( "Modulo", List.of( new Instance( 1, "localhost", 1201 ) ) );
+		applications.put( "Modulo", moduloApp );
+
+		_adaptorConfig = new AdaptorConfig( applications );
 	}
 
 	public AdaptorConfig adaptorConfig() {
