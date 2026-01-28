@@ -148,7 +148,7 @@ public class Modulo {
 
 		// FIXME: Hardcoded modulo reference should not really be present // Hugi 2026-01-28
 		final Map<String, App> applications = new HashMap<>( _adaptorConfig.applications() );
-		final App moduloApp = new App( "Modulo", List.of( new Instance( 1, "localhost", 1201 ) ) );
+		final App moduloApp = new App( "Modulo", List.of( new Instance( 1, "localhost", 45678 ) ) );
 		applications.put( "Modulo", moduloApp );
 
 		_adaptorConfig = new AdaptorConfig( applications );
