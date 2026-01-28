@@ -227,6 +227,13 @@ public class Modulo {
 	}
 
 	/**
+	 * FIXME: Temporary hardcoding of domain-to-app mapping until domains find home in config // Hugi 2026-01-27
+	 */
+	private static final Map<String, String> domainToAppMap = Map.of(
+			"www.hugi.io", "Hugi",
+			"www.lidamot.is", "Lidamot" );
+
+	/**
 	 * @return The name of the application from the given URI
 	 */
 	static String applicationNameFromURI( final HttpURI uri ) {
@@ -236,11 +243,10 @@ public class Modulo {
 		if( !uriString.startsWith( ADAPTOR_URL ) ) {
 			final String host = uri.getHost();
 
-			System.out.println( "No adaptor URL prefix present, trying domain" );
+			final String domainDefaultAppName = domainToAppMap.get( host );
 
-			// FIXME: Hardcoding domain for testing, should come from config // Hugi 2026-01-27
-			if( "www.hugi.io".equals( host ) ) {
-				return "Hugi";
+			if( domainDefaultAppName != null ) {
+				return domainDefaultAppName;
 			}
 
 			throw new IllegalArgumentException( "The uri '%s' does not start with an adaptor URL and we're not serving a known domain".formatted( uriString ) );
