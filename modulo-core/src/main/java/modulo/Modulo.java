@@ -240,7 +240,8 @@ public class Modulo {
 	 */
 	private static final Map<String, String> domainToAppMap = Map.of(
 			"www.hugi.io", "Hugi",
-			"www.lidamot.is", "Lidamot" );
+			"www.lidamot.is", "Lidamot",
+			"www.godurkodi.is", "Rebbi" );
 
 	/**
 	 * @return The name of the application from the given URI
