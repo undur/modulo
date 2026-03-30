@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.concurrent.Executors;
 import java.util.function.Function;
 
 import org.eclipse.jetty.http.HttpScheme;
@@ -15,6 +16,7 @@ import org.eclipse.jetty.server.HttpConnectionFactory;
 import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.ServerConnector;
+import org.eclipse.jetty.util.thread.QueuedThreadPool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -119,7 +121,10 @@ public class Modulo {
 
 		logger.info( "Starting modulo" );
 
-		final Server server = new Server();
+		final QueuedThreadPool threadPool = new QueuedThreadPool();
+		threadPool.setMaxThreads( 200 ); // FIXME: Make configurable
+		threadPool.setVirtualThreadsExecutor( Executors.newVirtualThreadPerTaskExecutor() );
+		final Server server = new Server( threadPool );
 
 		final HttpConfiguration httpConfig = new HttpConfiguration();
 		httpConfig.setSendServerVersion( false ); // Not sending the server software/version is good practice for security
