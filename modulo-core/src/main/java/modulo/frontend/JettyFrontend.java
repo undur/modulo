@@ -8,6 +8,10 @@ import java.util.Map;
 import java.util.concurrent.Executors;
 
 import org.eclipse.jetty.alpn.server.ALPNServerConnectionFactory;
+import org.eclipse.jetty.compression.gzip.GzipCompression;
+import org.eclipse.jetty.compression.gzip.GzipEncoderConfig;
+import org.eclipse.jetty.compression.server.CompressionConfig;
+import org.eclipse.jetty.compression.server.CompressionHandler;
 import org.eclipse.jetty.http.HttpFields;
 import org.eclipse.jetty.http.HttpHeader;
 import org.eclipse.jetty.http.HttpStatus;
@@ -145,11 +149,57 @@ public class JettyFrontend {
 
 	private Handler buildHandlerChain( final Map<String, Site> sitesByHost ) {
 		// Order matters: ACME challenge first (must respond on plain HTTP), then
-		// HTTP→HTTPS redirect, then canonical-hostname redirect, then the proxy.
+		// HTTP→HTTPS redirect, then canonical-hostname redirect, then response
+		// compression, then the proxy.
 		return new AcmeChallengeHandler( acmeWebroot,
 				new HttpsRedirectHandler( sitesByHost, httpsPort,
 						new CanonicalRedirectHandler( sitesByHost,
-								terminalHandler ) ) );
+								buildCompressionHandler( terminalHandler ) ) ) );
+	}
+
+	/**
+	 * Wraps the terminal handler in Jetty's {@link CompressionHandler} so
+	 * proxied responses get gzipped when the client supports it.
+	 *
+	 * FIXME: Configurable. Every value below should eventually come from
+	 * per-Site (or global) configuration so operators can tune compression
+	 * per-deployment. The constants are spelled out so the future refactor
+	 * is mechanical. // 2026-05-21
+	 */
+	private static Handler buildCompressionHandler( final Handler downstream ) {
+		// --- Tuning knobs (all FIXME-configurable) -----------------------
+		final int COMPRESSION_LEVEL = 6;                 // gzip 1..9; 6 is the standard speed/ratio trade-off, matches Apache's default
+		final List<String> COMPRESS_MIME_TYPES = List.of(
+				"text/html",
+				"text/plain",
+				"text/xml",
+				"text/css",
+				"text/javascript",
+				"application/javascript",
+				"application/json",
+				"application/xml",
+				"image/svg+xml" );                       // matches the AddOutputFilterByType list from the Apache config
+		final boolean COMPRESS_GET_ONLY = true;          // only compress GET responses; other methods are typically tiny / non-cacheable
+		// -----------------------------------------------------------------
+
+		final GzipEncoderConfig encoderConfig = new GzipEncoderConfig();
+		encoderConfig.setCompressionLevel( COMPRESSION_LEVEL );
+
+		final GzipCompression gzip = new GzipCompression();
+		gzip.setDefaultEncoderConfig( encoderConfig );
+
+		final CompressionConfig.Builder cfg = CompressionConfig.builder();
+		for( final String mime : COMPRESS_MIME_TYPES ) {
+			cfg.compressIncludeMimeType( mime );
+		}
+		if( COMPRESS_GET_ONLY ) {
+			cfg.compressIncludeMethod( "GET" );
+		}
+
+		final CompressionHandler handler = new CompressionHandler( downstream );
+		handler.putCompression( gzip );
+		handler.putConfiguration( "/", cfg.build() );
+		return handler;
 	}
 
 	private static String hostOf( final Request request ) {
