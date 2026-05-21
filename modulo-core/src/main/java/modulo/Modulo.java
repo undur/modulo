@@ -1,7 +1,6 @@
 package modulo;
 
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
@@ -22,6 +21,7 @@ import org.eclipse.jetty.util.thread.QueuedThreadPool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import modulo.frontend.FrontendConfig;
 import modulo.frontend.JettyFrontend;
 import modulo.frontend.apache.ApacheConfigReader;
 import modulo.frontend.site.Site;
@@ -73,10 +73,27 @@ public class Modulo {
 	private AdaptorConfig _adaptorConfig;
 
 	/**
-	 * Construct a new instance running the proxy on the given port
+	 * Front-end configuration. {@code null} means "front-end disabled" —
+	 * modulo runs only its plain reverse-proxy connector on {@link #_port}.
+	 */
+	private final FrontendConfig _frontendConfig;
+
+	/**
+	 * Construct a new instance running the plain reverse-proxy connector on
+	 * the given port, with no front-end (today's behavior).
 	 */
 	public Modulo( final int port ) {
+		this( port, null );
+	}
+
+	/**
+	 * Construct a new instance running both the plain reverse-proxy
+	 * connector and (if {@code frontendConfig} is non-null and its manifest
+	 * file exists) the TLS front-end alongside it.
+	 */
+	public Modulo( final int port, final FrontendConfig frontendConfig ) {
 		_port = port;
+		_frontendConfig = frontendConfig;
 
 		reloadAdaptorConfig();
 	}
@@ -123,36 +140,35 @@ public class Modulo {
 		return value;
 	}
 
-	/**
-	 * Default location of the manifest file listing Apache vhost files for
-	 * the front-end to import. One absolute or manifest-relative path per
-	 * line; blank lines and {@code #} comments ignored. Override via the
-	 * system property {@code modulo.frontend.apache-config-file}.
-	 */
-	private static final String DEFAULT_APACHE_CONFIG_MANIFEST = "/opt/webobjects/modulo-apache.conf";
-
 	public void start() {
 
 		logger.info( "Starting modulo" );
 
-		final Path manifest = Path.of( System.getProperty( "modulo.frontend.apache-config-file", DEFAULT_APACHE_CONFIG_MANIFEST ) );
-		final boolean useFrontend = Files.isRegularFile( manifest );
-
+		// Plain reverse-proxy connector always runs (today's behavior, port 1400).
+		// A failure here is fatal — modulo cannot function without it.
 		try {
-			// Plain reverse-proxy connector always runs (today's behavior, port 1400).
-			// The TLS front-end runs alongside it when the manifest file is present.
-			// Whether the plain connector should keep running once the front-end is
-			// in use will become a real config option later.
 			startPlain();
-
-			if( useFrontend ) {
-				startWithFrontend( manifest );
-			}
 		}
 		catch( final Exception e ) {
-			logger.info( "Modulo startup failed" );
+			logger.error( "Modulo startup failed" );
 			e.printStackTrace();
 			System.exit( -1 );
+		}
+
+		// The TLS front-end runs alongside the plain connector when a manifest
+		// file is configured and exists on disk. A front-end failure is logged
+		// loudly but does NOT take the process down — the plain reverse proxy
+		// continues serving (which is what existing deployments rely on).
+		// Whether the plain connector should keep running once the front-end
+		// is in use will become a real config option later.
+		final boolean useFrontend = _frontendConfig != null && Files.isRegularFile( _frontendConfig.apacheConfigManifest() );
+		if( useFrontend ) {
+			try {
+				startWithFrontend( _frontendConfig );
+			}
+			catch( final Exception e ) {
+				logger.error( "Front-end startup failed — continuing with plain reverse proxy only", e );
+			}
 		}
 
 		startAdaptorConfigAutoReloader();
@@ -184,22 +200,15 @@ public class Modulo {
 
 	/**
 	 * Iteration-1 startup: build the front-end (TLS + SNI + redirects + ACME
-	 * passthrough) from the given manifest file (which lists the Apache
-	 * vhost files to import) and bind it on ports given by
-	 * {@code modulo.frontend.http-port} (default 80) and
-	 * {@code modulo.frontend.https-port} (default 443).
+	 * passthrough) from the manifest file in {@code config} and bind it on
+	 * the configured HTTP/HTTPS ports.
 	 */
-	private void startWithFrontend( final Path manifest ) throws Exception {
-		final int httpPort = Integer.parseInt( System.getProperty( "modulo.frontend.http-port", "80" ) );
-		final int httpsPort = Integer.parseInt( System.getProperty( "modulo.frontend.https-port", "443" ) );
-		final String acmeWebrootProp = System.getProperty( "modulo.frontend.acme-webroot" );
-		final Path acmeWebroot = acmeWebrootProp == null ? null : Path.of( acmeWebrootProp );
-
-		final List<Site> sites = ApacheConfigReader.fromManifest( manifest ).read();
+	private void startWithFrontend( final FrontendConfig config ) throws Exception {
+		final List<Site> sites = ApacheConfigReader.fromManifest( config.apacheConfigManifest() ).read();
 		if( sites.isEmpty() ) {
-			throw new IllegalStateException( "No sites found via manifest " + manifest + " — refusing to start front-end with no Sites" );
+			throw new IllegalStateException( "No sites found via manifest " + config.apacheConfigManifest() + " — refusing to start front-end with no Sites" );
 		}
-		logger.info( "Front-end discovered {} site(s) via manifest {}", sites.size(), manifest );
+		logger.info( "Front-end discovered {} site(s) via manifest {}", sites.size(), config.apacheConfigManifest() );
 
 		final CertStore certStore = new CertStore( sites );
 		certStore.load();
@@ -207,9 +216,9 @@ public class Modulo {
 		final JettyFrontend frontend = new JettyFrontend(
 				sites,
 				certStore,
-				acmeWebroot,
-				httpPort,
-				httpsPort,
+				config.acmeWebroot(),
+				config.httpPort(),
+				config.httpsPort(),
 				new ModuloProxy( rewriteURIFunction() ) );
 		frontend.start();
 	}
