@@ -2,6 +2,7 @@ package modulo;
 
 import java.nio.file.Files;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -210,6 +211,8 @@ public class Modulo {
 		}
 		logger.info( "Front-end discovered {} site(s) via manifest {}", sites.size(), config.apacheConfigManifest() );
 
+		logUnmappedDomains( sites );
+
 		final CertStore certStore = new CertStore( sites );
 		certStore.load();
 
@@ -222,6 +225,39 @@ public class Modulo {
 				config.http3(),
 				new ModuloProxy( rewriteURIFunction() ) );
 		frontend.start();
+	}
+
+	/**
+	 * Walks the configured sites at startup and warns about hostnames that
+	 * won't route correctly: hostnames missing from {@link #domainToAppMap},
+	 * or hostnames pointing at app names that aren't known to wotaskd.
+	 * Helps catch misconfiguration before traffic hits modulo.
+	 */
+	private void logUnmappedDomains( final List<Site> sites ) {
+		final List<String> hostnamesWithoutMapping = new ArrayList<>();
+		final List<String> hostnamesPointingAtUnknownApp = new ArrayList<>();
+
+		for( final Site site : sites ) {
+			for( final String host : site.allHostnames() ) {
+				final String mappedApp = domainToAppMap.get( host );
+				if( mappedApp == null ) {
+					hostnamesWithoutMapping.add( host );
+					continue;
+				}
+				if( _adaptorConfig.application( mappedApp ) == null ) {
+					hostnamesPointingAtUnknownApp.add( "%s -> %s".formatted( host, mappedApp ) );
+				}
+			}
+		}
+
+		if( !hostnamesWithoutMapping.isEmpty() ) {
+			logger.warn( "{} site hostname(s) have no entry in domainToAppMap and won't route: {}",
+					hostnamesWithoutMapping.size(), hostnamesWithoutMapping );
+		}
+		if( !hostnamesPointingAtUnknownApp.isEmpty() ) {
+			logger.warn( "{} site hostname(s) point at apps unknown to wotaskd: {}",
+					hostnamesPointingAtUnknownApp.size(), hostnamesPointingAtUnknownApp );
+		}
 	}
 
 	public void reloadAdaptorConfig() {
