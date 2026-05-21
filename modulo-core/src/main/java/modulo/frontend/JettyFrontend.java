@@ -16,7 +16,11 @@ import org.eclipse.jetty.http.HttpFields;
 import org.eclipse.jetty.http.HttpHeader;
 import org.eclipse.jetty.http.HttpStatus;
 import org.eclipse.jetty.http2.server.HTTP2ServerConnectionFactory;
+import org.eclipse.jetty.http3.server.HTTP3ServerConnectionFactory;
+import org.eclipse.jetty.http3.server.HTTP3ServerQuicConfiguration;
 import org.eclipse.jetty.io.Content;
+import org.eclipse.jetty.quic.quiche.server.QuicheServerConnector;
+import org.eclipse.jetty.quic.quiche.server.QuicheServerQuicConfiguration;
 import org.eclipse.jetty.server.Handler;
 import org.eclipse.jetty.server.HttpConfiguration;
 import org.eclipse.jetty.server.HttpConnectionFactory;
@@ -52,9 +56,11 @@ public class JettyFrontend {
 	private final Path acmeWebroot;
 	private final int httpPort;
 	private final int httpsPort;
+	private final boolean http3Enabled;
 	private final Handler terminalHandler;
 
 	private Server server;
+	private Path http3PemWorkDir;
 
 	public JettyFrontend(
 			final List<Site> sites,
@@ -63,11 +69,23 @@ public class JettyFrontend {
 			final int httpPort,
 			final int httpsPort,
 			final Handler terminalHandler ) {
+		this( sites, certStore, acmeWebroot, httpPort, httpsPort, false, terminalHandler );
+	}
+
+	public JettyFrontend(
+			final List<Site> sites,
+			final CertStore certStore,
+			final Path acmeWebroot,
+			final int httpPort,
+			final int httpsPort,
+			final boolean http3Enabled,
+			final Handler terminalHandler ) {
 		this.sites = List.copyOf( sites );
 		this.certStore = certStore;
 		this.acmeWebroot = acmeWebroot;
 		this.httpPort = httpPort;
 		this.httpsPort = httpsPort;
+		this.http3Enabled = http3Enabled;
 		this.terminalHandler = terminalHandler;
 	}
 
@@ -98,6 +116,12 @@ public class JettyFrontend {
 		server.addConnector( buildHttpConnector() );
 		server.addConnector( buildHttpsConnector( sslContextFactory ) );
 
+		if( http3Enabled ) {
+			http3PemWorkDir = Files.createTempDirectory( "modulo-h3-" );
+			logger.info( "HTTP/3 enabled — using Quiche PEM work dir {}", http3PemWorkDir );
+			server.addConnector( buildHttp3Connector( sslContextFactory, http3PemWorkDir ) );
+		}
+
 		server.start();
 		certStore.startWatching();
 		return server;
@@ -107,6 +131,30 @@ public class JettyFrontend {
 		certStore.stopWatching();
 		if( server != null ) {
 			server.stop();
+		}
+		if( http3PemWorkDir != null ) {
+			deleteRecursively( http3PemWorkDir );
+			http3PemWorkDir = null;
+		}
+	}
+
+	private static void deleteRecursively( final Path dir ) {
+		try {
+			if( !Files.exists( dir ) ) {
+				return;
+			}
+			Files.walk( dir )
+					.sorted( ( a, b ) -> b.getNameCount() - a.getNameCount() )
+					.forEach( p -> {
+						try {
+							Files.deleteIfExists( p );
+						}
+						catch( final Exception ignored ) {
+						}
+					} );
+		}
+		catch( final Exception e ) {
+			logger.warn( "Failed to clean HTTP/3 PEM work dir {}: {}", dir, e.toString() );
 		}
 	}
 
@@ -137,6 +185,30 @@ public class JettyFrontend {
 		return connector;
 	}
 
+	/**
+	 * Builds the UDP connector for HTTP/3. Reuses the same SslContextFactory
+	 * as the TCP TLS connector so SNI/cert selection is identical. Requires
+	 * the JVM to be started with native-access enabled for the Quiche
+	 * foreign-memory module (see modulo.conf comments).
+	 */
+	private QuicheServerConnector buildHttp3Connector(
+			final SslContextFactory.Server sslContextFactory,
+			final Path pemWorkDir ) {
+		final HttpConfiguration httpsConfig = new HttpConfiguration();
+		httpsConfig.setSendServerVersion( false );
+		httpsConfig.setSecureScheme( "https" );
+		httpsConfig.setSecurePort( httpsPort );
+		httpsConfig.addCustomizer( new SecureRequestCustomizer() );
+
+		final QuicheServerQuicConfiguration quicConfig = HTTP3ServerQuicConfiguration.configure(
+				new QuicheServerQuicConfiguration( pemWorkDir ) );
+
+		final HTTP3ServerConnectionFactory h3 = new HTTP3ServerConnectionFactory( httpsConfig );
+		final QuicheServerConnector connector = new QuicheServerConnector( server, sslContextFactory, quicConfig, h3 );
+		connector.setPort( httpsPort );
+		return connector;
+	}
+
 	private static Map<String, Site> buildHostMap( final List<Site> sites ) {
 		final Map<String, Site> out = new HashMap<>();
 		for( final Site site : sites ) {
@@ -150,11 +222,14 @@ public class JettyFrontend {
 	private Handler buildHandlerChain( final Map<String, Site> sitesByHost ) {
 		// Order matters: ACME challenge first (must respond on plain HTTP), then
 		// HTTP→HTTPS redirect, then canonical-hostname redirect, then response
-		// compression, then the proxy.
+		// compression, then optionally Alt-Svc advertising H/3, then the proxy.
+		Handler tail = buildCompressionHandler( terminalHandler );
+		if( http3Enabled ) {
+			tail = new AltSvcHandler( httpsPort, tail );
+		}
 		return new AcmeChallengeHandler( acmeWebroot,
 				new HttpsRedirectHandler( sitesByHost, httpsPort,
-						new CanonicalRedirectHandler( sitesByHost,
-								buildCompressionHandler( terminalHandler ) ) ) );
+						new CanonicalRedirectHandler( sitesByHost, tail ) ) );
 	}
 
 	/**
@@ -205,6 +280,30 @@ public class JettyFrontend {
 	private static String hostOf( final Request request ) {
 		final String h = Request.getServerName( request );
 		return h == null ? null : h.toLowerCase();
+	}
+
+	/**
+	 * Adds an {@code Alt-Svc} response header on secure (HTTPS) responses so
+	 * capable clients know they may upgrade to HTTP/3. {@code ma=86400} caches
+	 * the advertisement for a day. Only added on H/2 or H/1.1 over TLS — for
+	 * H/3 traffic it would be a no-op (already using H/3) but harmless.
+	 */
+	private static class AltSvcHandler extends Handler.Wrapper {
+
+		private final String altSvcValue;
+
+		AltSvcHandler( final int httpsPort, final Handler next ) {
+			super( next );
+			this.altSvcValue = "h3=\":" + httpsPort + "\"; ma=86400";
+		}
+
+		@Override
+		public boolean handle( final Request request, final Response response, final Callback callback ) throws Exception {
+			if( request.isSecure() ) {
+				response.getHeaders().put( "alt-svc", altSvcValue );
+			}
+			return super.handle( request, response, callback );
+		}
 	}
 
 	/**

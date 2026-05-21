@@ -76,11 +76,13 @@ public class Application extends NGApplication {
 		final int httpPort = parsePort( config, "modulo.frontend.http-port", 80 );
 		final int httpsPort = parsePort( config, "modulo.frontend.https-port", 443 );
 		final String acmeWebroot = config.getProperty( "modulo.frontend.acme-webroot" );
+		final boolean http3 = Boolean.parseBoolean( config.getProperty( "modulo.frontend.http3", "false" ) );
 		return new FrontendConfig(
 				Path.of( manifest ),
 				httpPort,
 				httpsPort,
-				acmeWebroot == null ? null : Path.of( acmeWebroot ) );
+				acmeWebroot == null ? null : Path.of( acmeWebroot ),
+				http3 );
 	}
 
 	private static int parsePort( final Properties config, final String key, final int fallback ) {

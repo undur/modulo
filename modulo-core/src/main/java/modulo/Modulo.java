@@ -219,6 +219,7 @@ public class Modulo {
 				config.acmeWebroot(),
 				config.httpPort(),
 				config.httpsPort(),
+				config.http3(),
 				new ModuloProxy( rewriteURIFunction() ) );
 		frontend.start();
 	}

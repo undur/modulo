@@ -59,6 +59,23 @@
 			<artifactId>jetty-compression-server</artifactId>
 			<version>12.1.9</version>
 		</dependency>
+		<!-- HTTP/3 (opt-in via FrontendConfig.http3) -->
+		<dependency>
+			<groupId>org.eclipse.jetty.http3</groupId>
+			<artifactId>jetty-http3-server</artifactId>
+			<version>12.1.9</version>
+		</dependency>
+		<dependency>
+			<groupId>org.eclipse.jetty.quic</groupId>
+			<artifactId>jetty-quic-quiche-server</artifactId>
+			<version>12.1.9</version>
+		</dependency>
+		<!-- Foreign-memory Quiche backend (Java 22+). Needs the JVM flag to enable native access. -->
+		<dependency>
+			<groupId>org.eclipse.jetty.quic</groupId>
+			<artifactId>jetty-quic-quiche-foreign</artifactId>
+			<version>12.1.9</version>
+		</dependency>
 		<dependency>
 			<groupId>org.slf4j</groupId>
 			<artifactId>slf4j-simple</artifactId>
