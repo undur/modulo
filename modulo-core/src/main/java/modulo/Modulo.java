@@ -1,5 +1,7 @@
 package modulo;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
@@ -20,6 +22,10 @@ import org.eclipse.jetty.util.thread.QueuedThreadPool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import modulo.frontend.JettyFrontend;
+import modulo.frontend.apache.ApacheConfigReader;
+import modulo.frontend.site.Site;
+import modulo.frontend.tls.CertStore;
 import modulo.woadaptorconfig.AdaptorConfigParser;
 import modulo.woadaptorconfig.model.AdaptorConfig;
 import modulo.woadaptorconfig.model.App;
@@ -117,27 +123,31 @@ public class Modulo {
 		return value;
 	}
 
+	/**
+	 * Default location of the manifest file listing Apache vhost files for
+	 * the front-end to import. One absolute or manifest-relative path per
+	 * line; blank lines and {@code #} comments ignored. Override via the
+	 * system property {@code modulo.frontend.apache-config-file}.
+	 */
+	private static final String DEFAULT_APACHE_CONFIG_MANIFEST = "/opt/webobjects/modulo-apache.conf";
+
 	public void start() {
 
 		logger.info( "Starting modulo" );
 
-		final QueuedThreadPool threadPool = new QueuedThreadPool();
-		threadPool.setMaxThreads( 200 ); // FIXME: Make configurable
-		threadPool.setVirtualThreadsExecutor( Executors.newVirtualThreadPerTaskExecutor() );
-		final Server server = new Server( threadPool );
-
-		final HttpConfiguration httpConfig = new HttpConfiguration();
-		httpConfig.setSendServerVersion( false ); // Not sending the server software/version is good practice for security
-
-		final HttpConnectionFactory connectionFactory = new HttpConnectionFactory( httpConfig );
-		final ServerConnector connector = new ServerConnector( server, connectionFactory );
-		connector.setPort( _port );
-		server.addConnector( connector );
-		server.setHandler( new ModuloProxy( rewriteURIFunction() ) );
-		server.setErrorHandler( new ModuloProxy.ModuloErrorHandler() );
+		final Path manifest = Path.of( System.getProperty( "modulo.frontend.apache-config-file", DEFAULT_APACHE_CONFIG_MANIFEST ) );
+		final boolean useFrontend = Files.isRegularFile( manifest );
 
 		try {
-			server.start();
+			// Plain reverse-proxy connector always runs (today's behavior, port 1400).
+			// The TLS front-end runs alongside it when the manifest file is present.
+			// Whether the plain connector should keep running once the front-end is
+			// in use will become a real config option later.
+			startPlain();
+
+			if( useFrontend ) {
+				startWithFrontend( manifest );
+			}
 		}
 		catch( final Exception e ) {
 			logger.info( "Modulo startup failed" );
@@ -146,6 +156,62 @@ public class Modulo {
 		}
 
 		startAdaptorConfigAutoReloader();
+	}
+
+	/**
+	 * Original (pre-iteration-1) startup: a plain-HTTP connector on the
+	 * configured port. Used when the front-end flag is absent — modulo runs
+	 * behind another web server.
+	 */
+	private void startPlain() throws Exception {
+		final QueuedThreadPool threadPool = new QueuedThreadPool();
+		threadPool.setMaxThreads( 200 ); // FIXME: Make configurable
+		threadPool.setVirtualThreadsExecutor( Executors.newVirtualThreadPerTaskExecutor() );
+		final Server server = new Server( threadPool );
+
+		final HttpConfiguration httpConfig = new HttpConfiguration();
+		httpConfig.setSendServerVersion( false );
+
+		final HttpConnectionFactory connectionFactory = new HttpConnectionFactory( httpConfig );
+		final ServerConnector connector = new ServerConnector( server, connectionFactory );
+		connector.setPort( _port );
+		server.addConnector( connector );
+		server.setHandler( new ModuloProxy( rewriteURIFunction() ) );
+		server.setErrorHandler( new ModuloProxy.ModuloErrorHandler() );
+
+		server.start();
+	}
+
+	/**
+	 * Iteration-1 startup: build the front-end (TLS + SNI + redirects + ACME
+	 * passthrough) from the given manifest file (which lists the Apache
+	 * vhost files to import) and bind it on ports given by
+	 * {@code modulo.frontend.http-port} (default 80) and
+	 * {@code modulo.frontend.https-port} (default 443).
+	 */
+	private void startWithFrontend( final Path manifest ) throws Exception {
+		final int httpPort = Integer.parseInt( System.getProperty( "modulo.frontend.http-port", "80" ) );
+		final int httpsPort = Integer.parseInt( System.getProperty( "modulo.frontend.https-port", "443" ) );
+		final String acmeWebrootProp = System.getProperty( "modulo.frontend.acme-webroot" );
+		final Path acmeWebroot = acmeWebrootProp == null ? null : Path.of( acmeWebrootProp );
+
+		final List<Site> sites = ApacheConfigReader.fromManifest( manifest ).read();
+		if( sites.isEmpty() ) {
+			throw new IllegalStateException( "No sites found via manifest " + manifest + " — refusing to start front-end with no Sites" );
+		}
+		logger.info( "Front-end discovered {} site(s) via manifest {}", sites.size(), manifest );
+
+		final CertStore certStore = new CertStore( sites );
+		certStore.load();
+
+		final JettyFrontend frontend = new JettyFrontend(
+				sites,
+				certStore,
+				acmeWebroot,
+				httpPort,
+				httpsPort,
+				new ModuloProxy( rewriteURIFunction() ) );
+		frontend.start();
 	}
 
 	public void reloadAdaptorConfig() {
