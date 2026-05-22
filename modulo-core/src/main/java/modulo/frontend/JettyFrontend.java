@@ -6,6 +6,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executors;
+import java.util.regex.Pattern;
 
 import org.eclipse.jetty.alpn.server.ALPNServerConnectionFactory;
 import org.eclipse.jetty.compression.gzip.GzipCompression;
@@ -222,8 +223,10 @@ public class JettyFrontend {
 	private Handler buildHandlerChain( final Map<String, Site> sitesByHost ) {
 		// Order matters: ACME challenge first (must respond on plain HTTP), then
 		// HTTP→HTTPS redirect, then canonical-hostname redirect, then response
-		// compression, then optionally Alt-Svc advertising H/3, then the proxy.
-		Handler tail = buildCompressionHandler( terminalHandler );
+		// compression, then optionally Alt-Svc advertising H/3, then RFC-2965
+		// cookie scrubbing (only relevant to traffic we're about to proxy),
+		// then the proxy itself.
+		Handler tail = new Cookie2ScrubHandler( buildCompressionHandler( terminalHandler ) );
 		if( http3Enabled ) {
 			tail = new AltSvcHandler( httpsPort, tail );
 		}
@@ -280,6 +283,130 @@ public class JettyFrontend {
 	private static String hostOf( final Request request ) {
 		final String h = Request.getServerName( request );
 		return h == null ? null : h.toLowerCase();
+	}
+
+	/**
+	 * Normalises incoming {@code Cookie} headers before they reach the proxy.
+	 *
+	 * Two things happen here:
+	 *
+	 * <ol>
+	 * <li><b>Coalesce multiple {@code Cookie} headers into one.</b> HTTP/2 (RFC
+	 * 7540 §8.1.2.5) lets browsers split the {@code Cookie} header into multiple
+	 * HPACK-compressed header fields. Firefox does this. RFC 7540 requires that
+	 * these be re-concatenated using {@code "; "} before being passed into a
+	 * non-HTTP/2 context (such as the HTTP/1.1 hop to the upstream WO app).
+	 * Jetty's HttpClient does <em>not</em> do this coalescing automatically when
+	 * acting as a proxy, so the upstream sees only one of the cookies and the
+	 * rest are silently lost. We do the coalescing here.</li>
+	 *
+	 * <li><b>Strip RFC 2965 ("Cookie2") metadata segments.</b> WO emits cookies
+	 * with the {@code version="1"} attribute by default, which historically
+	 * caused RFC-2965-conformant browsers to echo the cookie back with
+	 * {@code $Path}/{@code $Domain} metadata between each cookie. Modern
+	 * browsers mostly don't do this any more, but we strip the segments
+	 * defensively in case any client still does.</li>
+	 * </ol>
+	 *
+	 * This handler only runs on the front-end chain — traffic arriving via
+	 * legacy Apache → modulo:1400 was already laundered by Apache and doesn't
+	 * see either issue.
+	 */
+	private static class Cookie2ScrubHandler extends Handler.Wrapper {
+
+		private static final Pattern COOKIE2_METADATA = Pattern.compile(
+				"\\s*;\\s*\\$(?:Path|Domain|Port|Version)\\s*=\\s*\"?[^;\"]*\"?",
+				Pattern.CASE_INSENSITIVE );
+
+		Cookie2ScrubHandler( final Handler next ) {
+			super( next );
+		}
+
+		@Override
+		public boolean handle( final Request request, final Response response, final Callback callback ) throws Exception {
+			final HttpFields original = request.getHeaders();
+			final List<String> cookieHeaders = original.getValuesList( HttpHeader.COOKIE );
+
+			// Fast path — overwhelming majority of requests are HTTP/1.1 with a
+			// single canonical Cookie header. Skip the work entirely.
+			if( cookieHeaders.isEmpty() ) {
+				return super.handle( request, response, callback );
+			}
+			if( cookieHeaders.size() == 1 && cookieHeaders.get( 0 ).indexOf( '$' ) < 0 ) {
+				return super.handle( request, response, callback );
+			}
+
+			// Either H/2-style split cookies, or RFC 2965 metadata present.
+			final String coalesced = join( cookieHeaders );
+			final String scrubbed = coalesced.indexOf( '$' ) < 0 ? coalesced : COOKIE2_METADATA.matcher( coalesced ).replaceAll( "" );
+			if( scrubbed.isBlank() ) {
+				// Nothing left after scrubbing — drop the Cookie header entirely.
+				return super.handle( new HeadersOverrideRequest( request, withoutCookies( original ) ), response, callback );
+			}
+			return super.handle( new HeadersOverrideRequest( request, withSingleCookie( original, scrubbed ) ), response, callback );
+		}
+
+		private static String join( final List<String> cookieHeaders ) {
+			if( cookieHeaders.size() == 1 ) {
+				return cookieHeaders.get( 0 );
+			}
+			final StringBuilder out = new StringBuilder();
+			for( final String value : cookieHeaders ) {
+				if( !out.isEmpty() ) {
+					out.append( "; " );
+				}
+				out.append( value );
+			}
+			return out.toString();
+		}
+
+		private static HttpFields withoutCookies( final HttpFields original ) {
+			final HttpFields.Mutable out = HttpFields.build();
+			for( final org.eclipse.jetty.http.HttpField field : original ) {
+				if( HttpHeader.COOKIE != field.getHeader() ) {
+					out.add( field );
+				}
+			}
+			return out.asImmutable();
+		}
+
+		private static HttpFields withSingleCookie( final HttpFields original, final String cookie ) {
+			final HttpFields.Mutable out = HttpFields.build();
+			boolean emitted = false;
+			for( final org.eclipse.jetty.http.HttpField field : original ) {
+				if( HttpHeader.COOKIE == field.getHeader() ) {
+					if( !emitted ) {
+						out.add( HttpHeader.COOKIE, cookie );
+						emitted = true;
+					}
+				}
+				else {
+					out.add( field );
+				}
+			}
+			return out.asImmutable();
+		}
+
+	}
+
+	/**
+	 * Tiny {@link Request.Wrapper} that returns a substituted {@link HttpFields}
+	 * for {@link #getHeaders()}. Used by {@link Cookie2ScrubHandler} to
+	 * present sanitised request headers to downstream handlers.
+	 */
+	private static class HeadersOverrideRequest extends Request.Wrapper {
+
+		private final HttpFields headers;
+
+		HeadersOverrideRequest( final Request wrapped, final HttpFields headers ) {
+			super( wrapped );
+			this.headers = headers;
+		}
+
+		@Override
+		public HttpFields getHeaders() {
+			return headers;
+		}
 	}
 
 	/**
