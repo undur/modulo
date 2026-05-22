@@ -239,7 +239,7 @@ public class Modulo {
 
 		for( final Site site : sites ) {
 			for( final String host : site.allHostnames() ) {
-				final String mappedApp = domainToAppMap.get( host );
+				final String mappedApp = DomainApp.appForHost( host );
 				if( mappedApp == null ) {
 					hostnamesWithoutMapping.add( host );
 					continue;
