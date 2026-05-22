@@ -43,6 +43,26 @@ class ModuloProxy extends ProxyHandler.Reverse {
 		// this to the client's hostname by setting "HostnameLookups On", which we currently don't do // Hugi 2025-055-07
 		proxyToServerRequest.headers( headers -> headers.add( "remote_host", clientIPAddress ) );
 
+		// FIXME: Forward the original host authority to the upstream, emulating
+		// Apache's `ProxyPreserveHost On`. WO apps (and wonder in particular)
+		// look at the `host` header to derive request.serverName() and to
+		// generate absolute URLs. Without this they see the upstream's
+		// host:port (e.g. hz1.rebbi.is:2008) instead of what the browser asked
+		// for (e.g. www.undirskriftasofnun.is). Under Apache→modulo this
+		// happened to work because Apache forwarded the original Host with
+		// `ProxyPreserveHost On` and that survived our second-hop rewriting.
+		// We source the original authority from the request URI rather than
+		// the Host header, because HTTP/2 carries it as the :authority
+		// pseudo-header (no Host header) — and Jetty exposes that as the URI
+		// authority. As modulo's front-facing role matures we should migrate
+		// WO apps off reading `host` directly and onto the standard
+		// X-Forwarded-Host / RFC 7239 Forwarded headers, and stop overriding
+		// Jetty's behavior here. See issue #7. // Hugi 2026-05-22
+		final String originalAuthority = clientToProxyRequest.getHttpURI().getAuthority();
+		if( originalAuthority != null ) {
+			proxyToServerRequest.headers( headers -> headers.put( org.eclipse.jetty.http.HttpHeader.HOST, originalAuthority ) );
+		}
+
 		// By default, Jetty will add itself to the list of user agents on the forwarded request (meaning the user-agent header contains multiple values which may confuse some apps)
 		// CHECKME: This really just corrects a mistake made by ourselves so this feels hacky. Ideally, we'd instruct Jetty to never modify the user-agent header in the first place // Hugi 2025-05-07
 		final String clientUserAgent = clientToProxyRequest.getHeaders().get( "user-agent" );
