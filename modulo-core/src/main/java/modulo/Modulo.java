@@ -353,14 +353,6 @@ public class Modulo {
 	}
 
 	/**
-	 * FIXME: Temporary hardcoding of domain-to-app mapping until domains find home in config // Hugi 2026-01-27
-	 */
-	private static final Map<String, String> domainToAppMap = Map.of(
-			"www.hugi.io", "Hugi",
-			"www.lidamot.is", "Lidamot",
-			"www.godurkodi.is", "Rebbi" );
-
-	/**
 	 * @return The name of the application from the given URI
 	 */
 	static String applicationNameFromURI( final HttpURI uri ) {
@@ -370,7 +362,7 @@ public class Modulo {
 		if( !uriString.startsWith( ADAPTOR_URL ) ) {
 			final String host = uri.getHost();
 
-			final String domainDefaultAppName = domainToAppMap.get( host );
+			final String domainDefaultAppName = DomainApp.appForHost( host );
 
 			if( domainDefaultAppName != null ) {
 				return domainDefaultAppName;
