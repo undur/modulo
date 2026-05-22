@@ -16,7 +16,7 @@ public class DomainApp {
 		domainToAppMap.put( "www.byosk.is", "oskgunnlaugs" );
 		domainToAppMap.put( "www.oskgunnlaugs.com", "oskgunnlaugs" );
 
-		domainToAppMap.put( "www.undurskriftasofnun.is", "Campaigns" );
+		domainToAppMap.put( "www.undirskriftasofnun.is", "Campaigns" );
 		domainToAppMap.put( "www.allraheill.is", "Campaigns" );
 
 		domainToAppMap.put( "www.godurkodi.is", "Rebbi" );
