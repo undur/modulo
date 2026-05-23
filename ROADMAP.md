@@ -92,6 +92,11 @@ The work in this iteration:
 - **Multiple hostnames per Site with canonical policy.** Already
   partially present from iteration 1; survives the config rewrite with
   the same defaults (canonical redirect on, HTTPS redirect on).
+- **Security response headers in the schema.** The Site config needs
+  fields for HSTS and (opt-in) a small set of other proxy-level
+  security headers. Implementation can come later; the *shape* has to
+  be settled when the schema is, so operators don't end up with two
+  config syntaxes for the same Site. (Issue: #8)
 
 When this is done, the Apache config reader can be deleted and the
 `domainToAppMap` in `Modulo.java` can be deleted.
