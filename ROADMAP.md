@@ -10,6 +10,9 @@ The roadmap is a living document. When an iteration completes, the
 entries move from "Coming up" to "Done". When new direction emerges,
 the document gets edited rather than appended to.
 
+For ideas being considered but not yet committed to an iteration, see
+[`BRAINSTORMING.md`](BRAINSTORMING.md).
+
 ---
 
 ## Where we are today
