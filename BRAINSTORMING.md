@@ -133,6 +133,19 @@ Becomes important the day someone (intentionally or accidentally) hits
 modulo with high concurrency. Cheap to add to Jetty; easy to forget
 until it bites.
 
+### Unix domain sockets for modulo → app
+
+When modulo and the WO apps share a host, the proxy → app hop could
+go over a Unix domain socket instead of loopback TCP. Typical wins on
+small-payload requests: 10–30% latency, 10–40% throughput. Also gives
+a filesystem-permission trust boundary instead of "trust that nothing
+else binds the port." Cost: wo-adaptor-jetty needs to bind UDS,
+wotaskd's model has to learn about socket paths, and the easy
+debugging escape hatch ("curl the app directly on its port") goes
+away. Not urgent — our per-request hop is already in the microseconds
+on loopback and isn't the bottleneck — but worth picking up the day
+performance or local-trust become design pressures.
+
 ### WebSocket / streaming-aware proxying
 
 Long-lived connections (WebSocket, SSE, gRPC) need different handling
