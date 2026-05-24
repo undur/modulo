@@ -172,6 +172,35 @@ but it's actually a substantial subsystem when treated seriously:
 When you grow from one to two instances of any app, all of this
 becomes load-bearing. Worth not under-scoping.
 
+### Whole-site redirects as a first-class Site shape
+
+URL routing within a site is the app's job. But "this entire hostname
+just redirects to that other one" is genuinely a deployment-level
+concern with no app on the receiving end of the old hostname. Comes
+up for rebrands, domain consolidation, typo-domains pointed at the
+canonical site, and temporary redirects during cutovers.
+
+The cleanest config shape is probably a Site whose primary intent is
+to redirect — distinct from a Site that routes to an app:
+
+```
+site:
+  hostnames: [strimillinn.is, www.strimillinn.is]
+  cert: { ... }
+  redirect_to: https://www.neytandinn.is
+  status: 301
+```
+
+No app, no routing rules. Legible at a glance.
+
+Alternative shapes — generalising `target` to {app, redirect, …}, or
+expressing it as a catch-all redirect rule on a regular Site — both
+work but tax every reader of the config for a feature most Sites
+don't use. The dedicated `redirect_to` field is honest about the
+intent.
+
+Worth deciding when iteration 3's schema is designed.
+
 ### Authentication / ACL at the proxy layer
 
 "This site requires auth — check OAuth / mTLS / a header before
