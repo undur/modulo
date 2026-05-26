@@ -7,12 +7,12 @@ adaptor with a small, modern, easier-to-understand piece of software.
 ## Why?
 
 A modern WO deployment historically required Apache + `mod_WebObjects`
-(or `mod_proxy`) in front, with all the operational baggage that
-brings: compiling an Apache module, dark configuration chants, and an
-HTTP stack that didn't speak HTTP/2.
+in front, with all the operational baggage that brings: compiling an
+Apache module, dark configuration chants, and an HTTP stack that
+didn't speak HTTP/2.
 
 Some avoid this by replacing the adaptor with `mod_proxy` or another
-generic proxy, but that loses the management benefits provided by
+generic proxy, but that means losing many of the management benefits provided by
 `JavaMonitor` and `wotaskd`.
 
 Modulo is a small reverse proxy that:
