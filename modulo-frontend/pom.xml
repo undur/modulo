@@ -27,49 +27,49 @@
 		<dependency>
 			<groupId>org.eclipse.jetty</groupId>
 			<artifactId>jetty-server</artifactId>
-			<version>12.1.9</version>
+			<version>12.1.10</version>
 		</dependency>
 		<dependency>
 			<groupId>org.eclipse.jetty.http2</groupId>
 			<artifactId>jetty-http2-server</artifactId>
-			<version>12.1.9</version>
+			<version>12.1.10</version>
 		</dependency>
 		<dependency>
 			<groupId>org.eclipse.jetty</groupId>
 			<artifactId>jetty-alpn-server</artifactId>
-			<version>12.1.9</version>
+			<version>12.1.10</version>
 		</dependency>
 		<dependency>
 			<groupId>org.eclipse.jetty</groupId>
 			<artifactId>jetty-alpn-java-server</artifactId>
-			<version>12.1.9</version>
+			<version>12.1.10</version>
 		</dependency>
 		<dependency>
 			<groupId>org.eclipse.jetty.compression</groupId>
 			<artifactId>jetty-compression-server</artifactId>
-			<version>12.1.9</version>
+			<version>12.1.10</version>
 		</dependency>
 		<dependency>
 			<groupId>org.eclipse.jetty.compression</groupId>
 			<artifactId>jetty-compression-gzip</artifactId>
-			<version>12.1.9</version>
+			<version>12.1.10</version>
 		</dependency>
 		<!-- HTTP/3 (opt-in via FrontendConfig.http3) -->
 		<dependency>
 			<groupId>org.eclipse.jetty.http3</groupId>
 			<artifactId>jetty-http3-server</artifactId>
-			<version>12.1.9</version>
+			<version>12.1.10</version>
 		</dependency>
 		<dependency>
 			<groupId>org.eclipse.jetty.quic</groupId>
 			<artifactId>jetty-quic-quiche-server</artifactId>
-			<version>12.1.9</version>
+			<version>12.1.10</version>
 		</dependency>
 		<!-- Foreign-memory Quiche backend (Java 22+). Needs the JVM flag to enable native access. -->
 		<dependency>
 			<groupId>org.eclipse.jetty.quic</groupId>
 			<artifactId>jetty-quic-quiche-foreign</artifactId>
-			<version>12.1.9</version>
+			<version>12.1.10</version>
 		</dependency>
 		<dependency>
 			<groupId>org.slf4j</groupId>
