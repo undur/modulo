@@ -32,6 +32,7 @@ public class DomainApp {
 		domainToAppMap.put( "www.whoacommunity.com", "whoacommunity" );
 		domainToAppMap.put( "jm.rebbi.is", "JavaMonitor" );
 		domainToAppMap.put( "www.gagnasafn.is", "Gagnasafn" );
+		domainToAppMap.put( "www.skoffin.com", "AjaxPlayground" );
 
 		return domainToAppMap;
 	}
