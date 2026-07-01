@@ -33,6 +33,7 @@ public class DomainApp {
 		domainToAppMap.put( "jm.rebbi.is", "JavaMonitor" );
 		domainToAppMap.put( "www.gagnasafn.is", "Gagnasafn" );
 		domainToAppMap.put( "www.skoffin.com", "AjaxPlayground" );
+		domainToAppMap.put( "www.svakaparty.com", "Vacation" );
 
 		return domainToAppMap;
 	}
