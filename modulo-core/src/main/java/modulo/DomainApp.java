@@ -26,6 +26,7 @@ public class DomainApp {
 
 		domainToAppMap.put( "www.hugi.io", "Hugi" );
 		domainToAppMap.put( "www.lidamot.is", "Lidamot" );
+		domainToAppMap.put( "www.hraunteigur.com", "ht23" );
 		domainToAppMap.put( "www.fermentedshark.com", "ng-website" );
 		domainToAppMap.put( "www.husvordurinn.is", "husvordurinn-ng" );
 		domainToAppMap.put( "www.kidwits.com", "KidWits" );
