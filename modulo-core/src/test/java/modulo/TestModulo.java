@@ -10,6 +10,12 @@ public class TestModulo {
 	@Test
 	final void applicationNameFromURI() {
 		final HttpURI uri = HttpURI.build( "/Apps/WebObjects/TestApp.woa/bla/bla" );
-		assertEquals( "TestApp", Modulo.applicationNameFromURI( uri ) );
+		assertEquals( "TestApp", Modulo.applicationNameFromURI( uri, host -> null ) );
+	}
+
+	@Test
+	final void applicationNameFromDomain() {
+		final HttpURI uri = HttpURI.build( "https://www.rebbi.is/some/path" );
+		assertEquals( "Rebbi", Modulo.applicationNameFromURI( uri, host -> "www.rebbi.is".equals( host ) ? "Rebbi" : null ) );
 	}
 }

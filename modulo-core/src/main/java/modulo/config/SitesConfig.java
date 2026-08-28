@@ -1,0 +1,78 @@
+package modulo.config;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+
+import modulo.frontend.site.Site;
+import modulo.frontend.tls.acme.AcmeSettings;
+
+/**
+ * The parsed native sites config: modulo's operator-facing source of truth
+ * for which sites the front-end serves and which upstream app each one
+ * routes to.
+ *
+ * Lives in modulo-core rather than modulo-frontend because it spans both
+ * concerns: the front-end {@link Site} (hostnames, TLS, policy) and the
+ * routing target ({@code app}), which the front-end deliberately knows
+ * nothing about.
+ *
+ * @param acme Deployment-wide ACME settings; null when no site uses ACME.
+ */
+public record SitesConfig( List<ConfiguredSite> sites, AcmeSettings acme ) {
+
+	public SitesConfig {
+		Objects.requireNonNull( sites, "sites" );
+		sites = List.copyOf( sites );
+	}
+
+	/**
+	 * One entry from the config file: the front-end Site plus the name of the
+	 * upstream app its hostnames route to. {@code app} may be null — such a
+	 * site gets TLS and redirects but no proxying (a warning is logged at
+	 * startup, matching the old behavior for hostnames missing from the
+	 * hardcoded domain map). {@code acmeManaged} marks sites whose
+	 * certificates modulo itself obtains and renews; their cert/key paths
+	 * point into the ACME storage directory.
+	 */
+	public record ConfiguredSite( Site site, String app, boolean acmeManaged ) {
+
+		public ConfiguredSite {
+			Objects.requireNonNull( site, "site" );
+		}
+	}
+
+	/**
+	 * @return The front-end's view of the config — just the Sites.
+	 */
+	public List<Site> frontendSites() {
+		return sites.stream().map( ConfiguredSite::site ).toList();
+	}
+
+	/**
+	 * @return The Sites whose certificates modulo obtains/renews via ACME.
+	 */
+	public List<Site> acmeManagedSites() {
+		return sites.stream().filter( ConfiguredSite::acmeManaged ).map( ConfiguredSite::site ).toList();
+	}
+
+	/**
+	 * @return hostname → app name for every hostname of every site that has
+	 *         an app configured. Hostnames are lowercase (normalized at parse
+	 *         time).
+	 */
+	public Map<String, String> domainToAppMap() {
+		final Map<String, String> map = new HashMap<>();
+
+		for( final ConfiguredSite configuredSite : sites ) {
+			if( configuredSite.app() != null ) {
+				for( final String hostname : configuredSite.site().allHostnames() ) {
+					map.put( hostname, configuredSite.app() );
+				}
+			}
+		}
+
+		return Map.copyOf( map );
+	}
+}

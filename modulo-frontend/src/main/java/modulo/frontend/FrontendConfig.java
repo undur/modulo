@@ -10,9 +10,17 @@ import java.nio.file.Path;
  * subsystem. A null instance means "front-end disabled, run as plain
  * reverse proxy only."
  *
- * @param apacheConfigManifest Path to a text file listing the Apache vhost
- *            files to import. One path per line; blank lines and {@code #}
- *            comments ignored.
+ * Site source: when {@link #sitesFile} points at an existing file it is the
+ * source of truth for sites and routing; otherwise the front-end falls back
+ * to importing sites from {@link #apacheConfigManifest}. At least one of the
+ * two must be configured for the front-end to start.
+ *
+ * @param sitesFile Path to modulo's native JSON sites config (see
+ *            {@code modulo.config.SitesConfigReader} for the schema).
+ * @param apacheConfigManifest Transitional fallback: path to a text file
+ *            listing the Apache vhost files to import. One path per line;
+ *            blank lines and {@code #} comments ignored. Routing then comes
+ *            from the hardcoded domain map.
  * @param httpPort Port for the front-end's plain-HTTP connector.
  * @param httpsPort Port for the front-end's TLS connector (also used as the
  *            UDP port for the HTTP/3 connector when {@link #http3} is true).
@@ -26,6 +34,7 @@ import java.nio.file.Path;
  *            module (see modulo.conf comments).
  */
 public record FrontendConfig(
+		Path sitesFile,
 		Path apacheConfigManifest,
 		int httpPort,
 		int httpsPort,

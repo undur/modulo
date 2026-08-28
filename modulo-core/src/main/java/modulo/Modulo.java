@@ -1,10 +1,12 @@
 package modulo;
 
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Timer;
 import java.util.TimerTask;
@@ -22,11 +24,14 @@ import org.eclipse.jetty.util.thread.QueuedThreadPool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import modulo.config.SitesConfig;
+import modulo.config.SitesConfigReader;
 import modulo.frontend.FrontendConfig;
 import modulo.frontend.JettyFrontend;
 import modulo.frontend.apache.ApacheConfigReader;
 import modulo.frontend.site.Site;
 import modulo.frontend.tls.CertStore;
+import modulo.frontend.tls.acme.AcmeManager;
 import modulo.woadaptorconfig.AdaptorConfigParser;
 import modulo.woadaptorconfig.model.AdaptorConfig;
 import modulo.woadaptorconfig.model.App;
@@ -78,6 +83,14 @@ public class Modulo {
 	 * modulo runs only its plain reverse-proxy connector on {@link #_port}.
 	 */
 	private final FrontendConfig _frontendConfig;
+
+	/**
+	 * Hostname → app name routing, populated when the native sites config is
+	 * the active site source. {@code null} means the native config is not in
+	 * use — routing then falls back to the hardcoded {@link DomainApp} map
+	 * (the transitional Apache-import path).
+	 */
+	private Map<String, String> _domainToAppMap;
 
 	/**
 	 * Construct a new instance running the plain reverse-proxy connector on
@@ -156,13 +169,14 @@ public class Modulo {
 			System.exit( -1 );
 		}
 
-		// The TLS front-end runs alongside the plain connector when a manifest
-		// file is configured and exists on disk. A front-end failure is logged
+		// The TLS front-end runs alongside the plain connector when a site
+		// source (native sites file, or the transitional Apache manifest) is
+		// configured and exists on disk. A front-end failure is logged
 		// loudly but does NOT take the process down — the plain reverse proxy
 		// continues serving (which is what existing deployments rely on).
 		// Whether the plain connector should keep running once the front-end
 		// is in use will become a real config option later.
-		final boolean useFrontend = _frontendConfig != null && Files.isRegularFile( _frontendConfig.apacheConfigManifest() );
+		final boolean useFrontend = _frontendConfig != null && (isRegularFile( _frontendConfig.sitesFile() ) || isRegularFile( _frontendConfig.apacheConfigManifest() ));
 		if( useFrontend ) {
 			try {
 				startWithFrontend( _frontendConfig );
@@ -205,13 +219,42 @@ public class Modulo {
 	 * the configured HTTP/HTTPS ports.
 	 */
 	private void startWithFrontend( final FrontendConfig config ) throws Exception {
-		final List<Site> sites = ApacheConfigReader.fromManifest( config.apacheConfigManifest() ).read();
-		if( sites.isEmpty() ) {
-			throw new IllegalStateException( "No sites found via manifest " + config.apacheConfigManifest() + " — refusing to start front-end with no Sites" );
+		// Site source: the native sites config when present (which also becomes
+		// the routing source and may bring ACME-managed sites), otherwise the
+		// transitional Apache vhost import (routing then stays with the
+		// hardcoded DomainApp map, certs with certbot).
+		final SitesConfig sitesConfig;
+		final List<Site> sites;
+
+		if( isRegularFile( config.sitesFile() ) ) {
+			sitesConfig = SitesConfigReader.read( config.sitesFile() );
+			sites = sitesConfig.frontendSites();
+			_domainToAppMap = sitesConfig.domainToAppMap();
+			logger.info( "Front-end configured with {} site(s) from {}", sites.size(), config.sitesFile() );
 		}
-		logger.info( "Front-end discovered {} site(s) via manifest {}", sites.size(), config.apacheConfigManifest() );
+		else {
+			sitesConfig = null;
+			sites = ApacheConfigReader.fromManifest( config.apacheConfigManifest() ).read();
+			logger.info( "Front-end discovered {} site(s) via manifest {}", sites.size(), config.apacheConfigManifest() );
+		}
+
+		if( sites.isEmpty() ) {
+			throw new IllegalStateException( "No sites found — refusing to start front-end with no Sites" );
+		}
 
 		logUnmappedDomains( sites );
+
+		// ACME-managed sites without a cert on disk get a self-signed
+		// placeholder before the keystore is built, so the TLS connector can
+		// start immediately; real certs are ordered in the background below.
+		final AcmeManager acmeManager;
+		if( sitesConfig != null && !sitesConfig.acmeManagedSites().isEmpty() ) {
+			acmeManager = new AcmeManager( sitesConfig.acme(), sitesConfig.acmeManagedSites() );
+			acmeManager.ensurePlaceholders();
+		}
+		else {
+			acmeManager = null;
+		}
 
 		final CertStore certStore = new CertStore( sites );
 		certStore.load();
@@ -220,17 +263,41 @@ public class Modulo {
 				sites,
 				certStore,
 				config.acmeWebroot(),
+				acmeManager == null ? null : acmeManager::challengeContent,
 				config.httpPort(),
 				config.httpsPort(),
 				config.http3(),
 				new ModuloProxy( rewriteURIFunction() ) );
 		frontend.start();
+
+		// Only after the server is up — HTTP-01 needs the HTTP connector answering
+		if( acmeManager != null ) {
+			acmeManager.start( certStore::reloadNow );
+		}
+	}
+
+	/**
+	 * @return The name of the app serving [host] — from the native config's
+	 *         routing map when active, otherwise from the hardcoded
+	 *         {@link DomainApp} map. Null when the host is unknown.
+	 */
+	private String appForHost( final String host ) {
+
+		if( _domainToAppMap != null ) {
+			return host == null ? null : _domainToAppMap.get( host.toLowerCase( Locale.ROOT ) );
+		}
+
+		return DomainApp.appForHost( host );
+	}
+
+	private static boolean isRegularFile( final Path path ) {
+		return path != null && Files.isRegularFile( path );
 	}
 
 	/**
 	 * Walks the configured sites at startup and warns about hostnames that
-	 * won't route correctly: hostnames missing from {@link #domainToAppMap},
-	 * or hostnames pointing at app names that aren't known to wotaskd.
+	 * won't route correctly: hostnames with no app mapping, or hostnames
+	 * pointing at app names that aren't known to wotaskd.
 	 * Helps catch misconfiguration before traffic hits modulo.
 	 */
 	private void logUnmappedDomains( final List<Site> sites ) {
@@ -239,7 +306,7 @@ public class Modulo {
 
 		for( final Site site : sites ) {
 			for( final String host : site.allHostnames() ) {
-				final String mappedApp = DomainApp.appForHost( host );
+				final String mappedApp = appForHost( host );
 				if( mappedApp == null ) {
 					hostnamesWithoutMapping.add( host );
 					continue;
@@ -251,7 +318,7 @@ public class Modulo {
 		}
 
 		if( !hostnamesWithoutMapping.isEmpty() ) {
-			logger.warn( "{} site hostname(s) have no entry in domainToAppMap and won't route: {}",
+			logger.warn( "{} site hostname(s) have no app mapping and won't route: {}",
 					hostnamesWithoutMapping.size(), hostnamesWithoutMapping );
 		}
 		if( !hostnamesPointingAtUnknownApp.isEmpty() ) {
@@ -320,7 +387,7 @@ public class Modulo {
 		return request -> {
 			final HttpURI originalURI = request.getHttpURI();
 
-			final String applicationName = applicationNameFromURI( originalURI );
+			final String applicationName = applicationNameFromURI( originalURI, this::appForHost );
 
 			final App application = _adaptorConfig.application( applicationName );
 
@@ -353,16 +420,17 @@ public class Modulo {
 	}
 
 	/**
+	 * @param appForHost Resolves a hostname to the app serving it (null when unknown)
 	 * @return The name of the application from the given URI
 	 */
-	static String applicationNameFromURI( final HttpURI uri ) {
+	static String applicationNameFromURI( final HttpURI uri, final Function<String, String> appForHost ) {
 
 		final String uriString = uri.getPath();
 
 		if( !uriString.startsWith( ADAPTOR_URL ) ) {
 			final String host = uri.getHost();
 
-			final String domainDefaultAppName = DomainApp.appForHost( host );
+			final String domainDefaultAppName = appForHost.apply( host );
 
 			if( domainDefaultAppName != null ) {
 				return domainDefaultAppName;
