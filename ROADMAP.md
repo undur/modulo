@@ -79,13 +79,25 @@ this iteration, modulo no longer reads any Apache config.
 
 The work in this iteration:
 
-- **Native config format and storage.** Design the on-disk shape of
-  modulo's own config. File per site, single file, or directory of
-  files — to be decided based on the schema that emerges. (Issues: TBD)
-- **Site model becomes routing source.** App routing comes from the
-  Site, not from a hardcoded map. The {primary hostname, aliases, cert
-  paths, app name, policy flags} all live on the Site object as
-  populated by the new config source. (Issues: TBD, parent #2)
+- **Native config format and storage.** *Decided and implemented:* a
+  single JSON file (`modulo.frontend.sites-file`), parsed strictly —
+  unknown fields and duplicate hostnames refuse to start the front-end
+  rather than being skipped. `//` comments and trailing commas allowed.
+  The `tls` block is designed ACME-first: omitted tls (or
+  `"mode": "acme"`) is the intended future default and currently fails
+  with a "not implemented yet" message; `"mode": "manual"` carries
+  explicit cert/key paths. Started single-file; grew `include`
+  patterns (single-level globs, e.g. `/apps/*/conf/site.json`) the
+  same week — one config file for ~20 sites was already crowded, and
+  per-app site files keep each application's config self-contained.
+  The `acme`/`include` blocks remain main-file-only.
+- **Site model becomes routing source.** *Implemented:* each config
+  entry pairs a front-end Site with an `app` name
+  (`modulo.config.SitesConfig`); the frontend `Site` record itself
+  stays deliberately routing-free for iteration 4's sake. When the
+  native config is active, routing comes from it; otherwise the
+  hardcoded `DomainApp` map still serves the Apache-import path.
+  (Issues: TBD, parent #2)
 - **Per-site rewrite rules.** Path-prefix rewrites with explicit choice
   of 301 redirect, 302 redirect, or internal passthrough. Replaces the
   Apache `RewriteRule` directives we've been ignoring. (Issue: #4)
@@ -98,8 +110,13 @@ The work in this iteration:
   be settled when the schema is, so operators don't end up with two
   config syntaxes for the same Site. (Issue: #8)
 
-When this is done, the Apache config reader can be deleted and the
-`domainToAppMap` in `Modulo.java` can be deleted.
+The Apache config reader stays for now — demoted rather than deleted.
+It serves two roles: the runtime fallback site source while deployments
+cut over (native sites file wins when both are configured), and the
+one-shot migration tool `modulo.config.ApacheConfigImporter`, which
+emits the native JSON from an Apache vhost manifest plus the hardcoded
+domain map. Once production runs on the native config, removing the
+fallback branch is trivial — or it simply stays as an importer.
 
 ### Iteration 4 — `modulo-frontend` opens up for second consumers
 
@@ -117,17 +134,41 @@ discussion, taken up when the work starts.
 
 ### Iteration 5 — Native ACME, retire certbot dependency
 
-Today modulo reads certbot-managed PEM files from disk and reloads on
-mtime change. The next step is for modulo to issue and renew its own
-certs via acme4j, removing certbot from the deployment.
+*Core implemented* (`modulo.frontend.tls.acme`, acme4j 3.5.1): modulo
+issues and renews its own certificates via ACME HTTP-01, with certbot
+needed only for sites still in `manual` TLS mode.
 
-Includes:
+How it works:
 
-- ACME HTTP-01 (no DNS provider creds required)
+- ACME is the config default: a site with no `tls` block is
+  ACME-managed. Requires the top-level `acme` block ({email, storage,
+  optional directory — `letsencrypt` (default), `letsencrypt-staging`,
+  or any directory URI, e.g. a local Pebble for testing}).
+- Issued PEMs are written to `<storage>/sites/<host>/{cert,key}.pem`
+  and the Site's cert/key paths point there — CertStore's existing
+  loading/hot-reload machinery works unchanged, and openssl-style
+  inspection keeps working.
+- No startup-order gymnastics: a managed site with no cert yet gets a
+  self-signed placeholder so the TLS connector starts immediately; the
+  real cert is ordered in the background once the HTTP connector is
+  answering challenges, and hot-swapped in via CertStore reload.
+  Initial issuance and renewal are the same code path.
+- HTTP-01 challenges are answered from memory by the front-end's
+  challenge handler; the certbot webroot passthrough remains as a
+  second source for not-yet-migrated sites.
+- Renewal loop: check every 12h, reissue when the cert is missing,
+  self-signed, expiring within 30 days, or no longer covers the
+  site's configured hostnames (alias added). Failures are logged
+  loudly and retried; the site keeps serving its current cert.
+
+Still to come:
+
 - ACME DNS-01 for wildcards and where HTTP-01 is impractical
-- Cert provider as a pluggable interface (ACME, manual upload,
-  self-signed for dev) hung off the Site's TLS config
-- Renewal scheduling, failure observability, expiry warnings
+- Renewal failure observability beyond logs — ties into the metrics/
+  expiry-surfacing work in iteration 6+
+- End-to-end verification against Let's Encrypt staging, then
+  per-site production cutover (flip a site's `tls` to omitted/acme,
+  drop its certbot renewal)
 
 (Issues: TBD, parent #2)
 

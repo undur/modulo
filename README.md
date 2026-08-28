@@ -37,15 +37,14 @@ serving real WO/ng-objects sites without issue. This is the core,
 mature part of the project.
 
 A **front-end mode** is being developed alongside it — TLS
-termination, HTTP/2, SNI across many sites, ACME-challenge passthrough,
-HTTP→HTTPS redirects, compression. The goal is for modulo to one day
-replace the Apache layer too. The front-end works today and is in
-production use for a real fleet of sites, but is still very much
-"works for the author's deployments" territory — it has no
-proper configuration format yet (sites are imported from existing
-Apache vhost files as interim scaffolding), no native ACME (certbot
-still does cert issuance), and a handful of operator-facing rough
-edges. The quotes around "works" are very much still required.
+termination, HTTP/2, SNI across many sites, automatic certificates
+via ACME, HTTP→HTTPS redirects, compression. The goal is for modulo
+to fully replace the Apache + certbot layer. The front-end is in
+production use for a real fleet of sites and now has its own
+configuration format (a single JSON sites file) and native ACME
+issuance/renewal — but it's still young: the ACME path is fresh out
+of development, and a handful of operator-facing rough edges remain.
+See [SETUP.md](SETUP.md) for setting it up.
 
 See [ROADMAP.md](ROADMAP.md) for where modulo is heading and
 [BRAINSTORMING.md](BRAINSTORMING.md) for ideas being considered.
@@ -89,17 +88,18 @@ ProxyPass /Apps/WebObjects http://proxyhost:1400/Apps/WebObjects
 ProxyPassReverse /Apps/WebObjects http://proxyhost:1400/Apps/WebObjects
 ```
 
-### Trying out the front-end mode
+### The front-end mode
 
 Modulo's TLS front-end can run *alongside* the plain proxy when
 configured. This lets you incrementally move sites off Apache without
-breaking the rest. Config lives in a properties file at
-`/opt/webobjects/modulo.conf`; see the `modulo.frontend.*` properties
-and ROADMAP.md. Be aware that this part of the project is still in
-flux — the config format will change before reaching a stable shape.
+breaking the rest. [SETUP.md](SETUP.md) covers the full setup — the
+`modulo.conf` properties, the sites config format, automatic
+certificates, and migrating an existing Apache + certbot deployment.
 
 ## Documentation
 
+- [SETUP.md](SETUP.md) — setting up modulo as a front-facing HTTPS
+  server, or as a plain proxy behind another web server.
 - [ROADMAP.md](ROADMAP.md) — what's next, iteration by iteration, and
   deliberate non-goals.
 - [BRAINSTORMING.md](BRAINSTORMING.md) — ideas being considered but
