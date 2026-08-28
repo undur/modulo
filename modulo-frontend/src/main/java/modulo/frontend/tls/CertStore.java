@@ -119,7 +119,16 @@ public class CertStore {
 		}
 	}
 
-	private void checkAndReload() {
+	/**
+	 * Force an immediate check-and-reload instead of waiting for the next
+	 * poll — used by the ACME manager right after writing fresh PEMs.
+	 * Synchronized (as is the poll path) since it can race the poll timer.
+	 */
+	public void reloadNow() {
+		checkAndReload();
+	}
+
+	private synchronized void checkAndReload() {
 		boolean changed = false;
 		for( final Site site : sites ) {
 			if( mtimeChanged( site.certPath() ) || mtimeChanged( site.keyPath() ) ) {

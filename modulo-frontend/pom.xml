@@ -25,6 +25,11 @@
 	</build>
 	<dependencies>
 		<dependency>
+			<groupId>org.shredzone.acme4j</groupId>
+			<artifactId>acme4j-client</artifactId>
+			<version>3.5.1</version>
+		</dependency>
+		<dependency>
 			<groupId>org.eclipse.jetty</groupId>
 			<artifactId>jetty-server</artifactId>
 			<version>12.1.12</version>

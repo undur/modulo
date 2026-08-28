@@ -6,6 +6,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executors;
+import java.util.function.Function;
 import java.util.regex.Pattern;
 
 import org.eclipse.jetty.alpn.server.ALPNServerConnectionFactory;
@@ -55,6 +56,7 @@ public class JettyFrontend {
 	private final List<Site> sites;
 	private final CertStore certStore;
 	private final Path acmeWebroot;
+	private final Function<String, String> acmeChallengeSource;
 	private final int httpPort;
 	private final int httpsPort;
 	private final boolean http3Enabled;
@@ -70,13 +72,21 @@ public class JettyFrontend {
 			final int httpPort,
 			final int httpsPort,
 			final Handler terminalHandler ) {
-		this( sites, certStore, acmeWebroot, httpPort, httpsPort, false, terminalHandler );
+		this( sites, certStore, acmeWebroot, null, httpPort, httpsPort, false, terminalHandler );
 	}
 
+	/**
+	 * @param acmeWebroot Optional webroot for challenge tokens written by an
+	 *            external ACME client (certbot). Null disables.
+	 * @param acmeChallengeSource Optional in-memory challenge source (token →
+	 *            key authorization) for modulo's own ACME manager; consulted
+	 *            before the webroot. Null disables.
+	 */
 	public JettyFrontend(
 			final List<Site> sites,
 			final CertStore certStore,
 			final Path acmeWebroot,
+			final Function<String, String> acmeChallengeSource,
 			final int httpPort,
 			final int httpsPort,
 			final boolean http3Enabled,
@@ -84,6 +94,7 @@ public class JettyFrontend {
 		this.sites = List.copyOf( sites );
 		this.certStore = certStore;
 		this.acmeWebroot = acmeWebroot;
+		this.acmeChallengeSource = acmeChallengeSource;
 		this.httpPort = httpPort;
 		this.httpsPort = httpsPort;
 		this.http3Enabled = http3Enabled;
@@ -230,7 +241,7 @@ public class JettyFrontend {
 		if( http3Enabled ) {
 			tail = new AltSvcHandler( httpsPort, tail );
 		}
-		return new AcmeChallengeHandler( acmeWebroot,
+		return new AcmeChallengeHandler( acmeWebroot, acmeChallengeSource,
 				new HttpsRedirectHandler( sitesByHost, httpsPort,
 						new CanonicalRedirectHandler( sitesByHost, tail ) ) );
 	}
@@ -434,25 +445,28 @@ public class JettyFrontend {
 	}
 
 	/**
-	 * Serves {@code /.well-known/acme-challenge/*} from {@link #webroot} on
-	 * plain HTTP so certbot's HTTP-01 challenge keeps working. Everything else
-	 * is delegated.
+	 * Serves {@code /.well-known/acme-challenge/*} on plain HTTP. Two
+	 * sources, in order: the in-memory challenge source (modulo's own ACME
+	 * manager), then token files under {@link #webroot} (an external ACME
+	 * client like certbot). Everything else is delegated.
 	 */
 	private static class AcmeChallengeHandler extends Handler.Wrapper {
 
 		private static final String CHALLENGE_PREFIX = "/.well-known/acme-challenge/";
 
 		private final Path webroot;
+		private final Function<String, String> challengeSource;
 
-		AcmeChallengeHandler( final Path webroot, final Handler next ) {
+		AcmeChallengeHandler( final Path webroot, final Function<String, String> challengeSource, final Handler next ) {
 			super( next );
 			this.webroot = webroot;
+			this.challengeSource = challengeSource;
 		}
 
 		@Override
 		public boolean handle( final Request request, final Response response, final Callback callback ) throws Exception {
 			final String path = request.getHttpURI().getPath();
-			if( webroot == null || !path.startsWith( CHALLENGE_PREFIX ) ) {
+			if( (webroot == null && challengeSource == null) || !path.startsWith( CHALLENGE_PREFIX ) ) {
 				return super.handle( request, response, callback );
 			}
 			final String token = path.substring( CHALLENGE_PREFIX.length() );
@@ -460,16 +474,31 @@ public class JettyFrontend {
 				Response.writeError( request, response, callback, HttpStatus.NOT_FOUND_404 );
 				return true;
 			}
-			final Path file = webroot.resolve( CHALLENGE_PREFIX.substring( 1 ) ).resolve( token );
-			if( !Files.isRegularFile( file ) ) {
-				Response.writeError( request, response, callback, HttpStatus.NOT_FOUND_404 );
-				return true;
+
+			if( challengeSource != null ) {
+				final String content = challengeSource.apply( token );
+				if( content != null ) {
+					writeChallengeResponse( response, callback, content.getBytes( java.nio.charset.StandardCharsets.US_ASCII ) );
+					return true;
+				}
 			}
-			final byte[] body = Files.readAllBytes( file );
+
+			if( webroot != null ) {
+				final Path file = webroot.resolve( CHALLENGE_PREFIX.substring( 1 ) ).resolve( token );
+				if( Files.isRegularFile( file ) ) {
+					writeChallengeResponse( response, callback, Files.readAllBytes( file ) );
+					return true;
+				}
+			}
+
+			Response.writeError( request, response, callback, HttpStatus.NOT_FOUND_404 );
+			return true;
+		}
+
+		private static void writeChallengeResponse( final Response response, final Callback callback, final byte[] body ) {
 			response.getHeaders().put( HttpHeader.CONTENT_TYPE, "text/plain" );
 			response.getHeaders().put( HttpHeader.CONTENT_LENGTH, String.valueOf( body.length ) );
 			response.write( true, java.nio.ByteBuffer.wrap( body ), callback );
-			return true;
 		}
 	}
 
