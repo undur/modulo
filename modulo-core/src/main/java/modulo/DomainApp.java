@@ -36,6 +36,14 @@ public class DomainApp {
 		domainToAppMap.put( "www.skoffin.com", "AjaxPlayground" );
 		domainToAppMap.put( "www.svakaparty.com", "Vacation" );
 
+		// Supplemental mappings from system properties, an interim config hook until
+		// domains find their proper home in modulo.conf: -Dmodulo.domain-app.<host>=<app>
+		System.getProperties()
+				.stringPropertyNames()
+				.stream()
+				.filter( name -> name.startsWith( "modulo.domain-app." ) )
+				.forEach( name -> domainToAppMap.put( name.substring( "modulo.domain-app.".length() ).toLowerCase(), System.getProperty( name ) ) );
+
 		return domainToAppMap;
 	}
 
