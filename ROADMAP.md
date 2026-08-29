@@ -167,12 +167,24 @@ LE caches recent authorizations).
 Policy: **h3 stays disabled by default.** The fleet order is
 all-or-nothing — one dead domain stalls it — so enabling h3 is an
 operator's conscious opt-in. When enabled, modulo performs the fleet
-dance and prefers h3 via the Alt-Svc advertisement; Alt-Svc should
-only be sent for sites the fleet cert covers. Every failure mode
-(stale fleet cert, uncovered hostname, UDP blocked) degrades to
-TCP h2 — worst case is "no h3", never "site down". Renewal failures
-log loudly; teaching the fleet order to drop unvalidatable hostnames
-is a refinement for later.
+dance and prefers h3 via the Alt-Svc advertisement, sent only for
+sites the fleet cert covers. Every failure mode (stale fleet cert,
+uncovered hostname, UDP blocked) degrades to TCP h2 — worst case is
+"no h3", never "site down". Renewal failures log loudly; teaching the
+fleet order to drop unvalidatable hostnames is a refinement for later.
+
+*Implemented and field-tested 2026-08-29* — the modulo side works
+end-to-end: fleet cert issued for 42 SANs in one order, QUIC handshake
+from the internet completes with ALPN h3 serving the fleet cert. But
+Jetty 12.1.12's h3 layer then fails writing its own control stream
+(`QUICHE_ERR_STREAM_LIMIT` on stream 3), reproduced with both aioquic
+and Jetty's own 12.1.12 h3 client — an apparently unreported upstream
+bug ("HTTP/3+QUIC support is experimental", says Jetty's own startup
+log). So h3 remains off in production; the fleet machinery sits ready
+behind the `http3` flag, and re-testing on each Jetty upgrade is
+cheap: flip the flag, restart twice (quiche exports its PEM at
+connector start, so the first enablement wants a restart after the
+initial fleet issuance), probe, flip back if still broken.
 
 ### Iteration 6+ — Operability and polish
 
