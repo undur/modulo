@@ -12,7 +12,6 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-import modulo.frontend.apache.ApacheConfigReader;
 import modulo.frontend.site.Site;
 
 class ApacheConfigImporterTest {

@@ -11,8 +11,7 @@ import java.util.Objects;
  * material it presents, and policy flags. It deliberately knows nothing
  * about upstream routing — that remains modulo's existing responsibility.
  *
- * Iteration 1: populated by reading existing Apache vhost files. See
- * {@code modulo.frontend.apache.ApacheConfigReader}.
+ * Populated from the sites config; see {@code modulo.config.SitesConfigReader}.
  */
 public record Site(
 		String primaryHostname,

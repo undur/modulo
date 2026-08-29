@@ -73,14 +73,12 @@ public class Application extends NGApplication {
 
 	/**
 	 * Reads the front-end-related properties and assembles a
-	 * {@link FrontendConfig}. Returns {@code null} if no site source is
-	 * configured (neither the native sites file nor the transitional Apache
-	 * manifest) — modulo then runs as a plain reverse proxy only.
+	 * {@link FrontendConfig}. Returns {@code null} if no sites file is
+	 * configured — modulo then runs as a plain reverse proxy only.
 	 */
 	static FrontendConfig buildFrontendConfig( final Properties config ) {
 		final String sitesFile = config.getProperty( "modulo.frontend.sites-file" );
-		final String manifest = config.getProperty( "modulo.frontend.apache-config-file" );
-		if( sitesFile == null && manifest == null ) {
+		if( sitesFile == null ) {
 			return null;
 		}
 		final int httpPort = parsePort( config, "modulo.frontend.http-port", 80 );
@@ -88,8 +86,7 @@ public class Application extends NGApplication {
 		final String acmeWebroot = config.getProperty( "modulo.frontend.acme-webroot" );
 		final boolean http3 = Boolean.parseBoolean( config.getProperty( "modulo.frontend.http3", "false" ) );
 		return new FrontendConfig(
-				sitesFile == null ? null : Path.of( sitesFile ),
-				manifest == null ? null : Path.of( manifest ),
+				Path.of( sitesFile ),
 				httpPort,
 				httpsPort,
 				acmeWebroot == null ? null : Path.of( acmeWebroot ),

@@ -28,7 +28,6 @@ import modulo.config.SitesConfig;
 import modulo.config.SitesConfigReader;
 import modulo.frontend.FrontendConfig;
 import modulo.frontend.JettyFrontend;
-import modulo.frontend.apache.ApacheConfigReader;
 import modulo.frontend.site.Site;
 import modulo.frontend.tls.CertStore;
 import modulo.frontend.tls.acme.AcmeManager;
@@ -85,17 +84,15 @@ public class Modulo {
 	private final FrontendConfig _frontendConfig;
 
 	/**
-	 * Hostname → app name routing, populated when the native sites config is
-	 * the active site source. {@code null} means the native config is not in
-	 * use — routing then falls back to the hardcoded {@link DomainApp} map
-	 * (the transitional Apache-import path).
+	 * Hostname → app name routing, populated from the sites config when the
+	 * front-end is active. {@code null} in plain-proxy mode — routing then
+	 * falls back to the {@link DomainApp} property-driven mappings.
 	 */
 	private Map<String, String> _domainToAppMap;
 
 	/**
-	 * The parsed native sites config, when it is the active site source.
-	 * Null in plain-proxy mode and on the transitional Apache-import path.
-	 * Exposed for the overview page.
+	 * The parsed sites config when the front-end is active, null in
+	 * plain-proxy mode. Exposed for the overview page.
 	 */
 	private SitesConfig _sitesConfig;
 
@@ -176,14 +173,13 @@ public class Modulo {
 			System.exit( -1 );
 		}
 
-		// The TLS front-end runs alongside the plain connector when a site
-		// source (native sites file, or the transitional Apache manifest) is
-		// configured and exists on disk. A front-end failure is logged
+		// The TLS front-end runs alongside the plain connector when the sites
+		// config file exists on disk. A front-end failure is logged
 		// loudly but does NOT take the process down — the plain reverse proxy
 		// continues serving (which is what existing deployments rely on).
 		// Whether the plain connector should keep running once the front-end
 		// is in use will become a real config option later.
-		final boolean useFrontend = _frontendConfig != null && (isRegularFile( _frontendConfig.sitesFile() ) || isRegularFile( _frontendConfig.apacheConfigManifest() ));
+		final boolean useFrontend = _frontendConfig != null && isRegularFile( _frontendConfig.sitesFile() );
 		if( useFrontend ) {
 			try {
 				startWithFrontend( _frontendConfig );
@@ -226,25 +222,11 @@ public class Modulo {
 	 * the configured HTTP/HTTPS ports.
 	 */
 	private void startWithFrontend( final FrontendConfig config ) throws Exception {
-		// Site source: the native sites config when present (which also becomes
-		// the routing source and may bring ACME-managed sites), otherwise the
-		// transitional Apache vhost import (routing then stays with the
-		// hardcoded DomainApp map, certs with certbot).
-		final SitesConfig sitesConfig;
-		final List<Site> sites;
-
-		if( isRegularFile( config.sitesFile() ) ) {
-			sitesConfig = SitesConfigReader.read( config.sitesFile() );
-			_sitesConfig = sitesConfig;
-			sites = sitesConfig.frontendSites();
-			_domainToAppMap = sitesConfig.domainToAppMap();
-			logger.info( "Front-end configured with {} site(s) from {}", sites.size(), config.sitesFile() );
-		}
-		else {
-			sitesConfig = null;
-			sites = ApacheConfigReader.fromManifest( config.apacheConfigManifest() ).read();
-			logger.info( "Front-end discovered {} site(s) via manifest {}", sites.size(), config.apacheConfigManifest() );
-		}
+		final SitesConfig sitesConfig = SitesConfigReader.read( config.sitesFile() );
+		_sitesConfig = sitesConfig;
+		_domainToAppMap = sitesConfig.domainToAppMap();
+		final List<Site> sites = sitesConfig.frontendSites();
+		logger.info( "Front-end configured with {} site(s) from {}", sites.size(), config.sitesFile() );
 
 		if( sites.isEmpty() ) {
 			throw new IllegalStateException( "No sites found — refusing to start front-end with no Sites" );
@@ -256,7 +238,7 @@ public class Modulo {
 		// placeholder before the keystore is built, so the TLS connector can
 		// start immediately; real certs are ordered in the background below.
 		final AcmeManager acmeManager;
-		if( sitesConfig != null && !sitesConfig.acmeManagedSites().isEmpty() ) {
+		if( !sitesConfig.acmeManagedSites().isEmpty() ) {
 			acmeManager = new AcmeManager( sitesConfig.acme(), sitesConfig.acmeManagedSites() );
 			acmeManager.ensurePlaceholders();
 		}
@@ -285,9 +267,10 @@ public class Modulo {
 	}
 
 	/**
-	 * @return The name of the app serving [host] — from the native config's
-	 *         routing map when active, otherwise from the hardcoded
-	 *         {@link DomainApp} map. Null when the host is unknown.
+	 * @return The name of the app serving [host] — from the sites config's
+	 *         routing map when the front-end is active, otherwise from the
+	 *         {@link DomainApp} property mappings. Null when the host is
+	 *         unknown.
 	 */
 	private String appForHost( final String host ) {
 

@@ -1,4 +1,4 @@
-package modulo.frontend.apache;
+package modulo.config;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;

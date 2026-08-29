@@ -18,19 +18,22 @@ import org.slf4j.LoggerFactory;
 import tools.jackson.databind.json.JsonMapper;
 
 import modulo.DomainApp;
-import modulo.frontend.apache.ApacheConfigReader;
 import modulo.frontend.site.Site;
 
 /**
- * One-shot migration tool: converts the Apache-vhost-derived site setup into
- * modulo's native sites config JSON.
+ * One-shot migration tool: converts an Apache + mod_WebObjects vhost setup
+ * into modulo's native sites config JSON.
  *
- * Reads Sites from an Apache vhost manifest (the same file the transitional
- * runtime path uses) and resolves each site's app via the hardcoded
- * {@link DomainApp} map — producing the JSON that
- * {@link SitesConfigReader} consumes. Run it once per deployment, review the
- * output, point {@code modulo.frontend.sites-file} at it, and the Apache
- * config is out of the loop.
+ * Reads Sites from a manifest file (one vhost-file path per line, {@code #}
+ * comments allowed) and emits the JSON that {@link SitesConfigReader}
+ * consumes, with every site in {@code manual} TLS mode pointing at the
+ * vhosts' existing PEM paths. Run it once, review the output, point
+ * {@code modulo.frontend.sites-file} at it — Apache is out of the loop.
+ *
+ * Hostname → app mappings aren't in Apache config, so sites are emitted
+ * without an {@code "app"} (with a warning) for the operator to fill in.
+ * Alternatively, supply mappings when running the importer via
+ * {@code -Dmodulo.domain-app.<host>=<app>} properties (see {@link DomainApp}).
  *
  * Usage: {@code ApacheConfigImporter <manifest-file> [output-file]}
  * (prints to stdout when no output file is given).

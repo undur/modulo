@@ -10,23 +10,17 @@ import java.nio.file.Path;
  * subsystem. A null instance means "front-end disabled, run as plain
  * reverse proxy only."
  *
- * Site source: when {@link #sitesFile} points at an existing file it is the
- * source of truth for sites and routing; otherwise the front-end falls back
- * to importing sites from {@link #apacheConfigManifest}. At least one of the
- * two must be configured for the front-end to start.
- *
- * @param sitesFile Path to modulo's native JSON sites config (see
+ * @param sitesFile Path to modulo's JSON sites config — the source of truth
+ *            for sites, TLS/ACME and routing (see
  *            {@code modulo.config.SitesConfigReader} for the schema).
- * @param apacheConfigManifest Transitional fallback: path to a text file
- *            listing the Apache vhost files to import. One path per line;
- *            blank lines and {@code #} comments ignored. Routing then comes
- *            from the hardcoded domain map.
  * @param httpPort Port for the front-end's plain-HTTP connector.
  * @param httpsPort Port for the front-end's TLS connector (also used as the
  *            UDP port for the HTTP/3 connector when {@link #http3} is true).
  * @param acmeWebroot Optional directory whose {@code .well-known/acme-challenge/}
- *            subdirectory holds HTTP-01 challenge tokens. {@code null} disables
- *            challenge passthrough.
+ *            subdirectory holds HTTP-01 challenge tokens written by an
+ *            external ACME client (certbot) — for deployments mid-migration
+ *            to modulo's native ACME. {@code null} disables challenge
+ *            passthrough.
  * @param http3 When true, opens an additional UDP connector on {@code httpsPort}
  *            speaking HTTP/3 (QUIC), and adds an {@code Alt-Svc} advertisement
  *            on HTTP/2 responses so capable clients try to upgrade. Requires
@@ -35,7 +29,6 @@ import java.nio.file.Path;
  */
 public record FrontendConfig(
 		Path sitesFile,
-		Path apacheConfigManifest,
 		int httpPort,
 		int httpsPort,
 		Path acmeWebroot,

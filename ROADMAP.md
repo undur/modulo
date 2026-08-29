@@ -110,13 +110,15 @@ The work in this iteration:
   be settled when the schema is, so operators don't end up with two
   config syntaxes for the same Site. (Issue: #8)
 
-The Apache config reader stays for now — demoted rather than deleted.
-It serves two roles: the runtime fallback site source while deployments
-cut over (native sites file wins when both are configured), and the
-one-shot migration tool `modulo.config.ApacheConfigImporter`, which
-emits the native JSON from an Apache vhost manifest plus the hardcoded
-domain map. Once production runs on the native config, removing the
-fallback branch is trivial — or it simply stays as an importer.
+The Apache machinery's fate (settled 2026-08-29, once production ran
+fully on the native config): the *runtime* Apache-import path was
+deleted — it was a migration convenience for modulo's own development,
+and every future schema feature would have had to answer for it. The
+*importer* (`modulo.config.ApacheConfigImporter` + the vhost reader)
+stays: modulo's natural adopters run Apache + mod_WebObjects + certbot,
+and "one command turns your vhosts into a working sites.json" is the
+migration story for them — a one-shot converter, never a runtime
+dependency.
 
 ### Iteration 4 — `modulo-frontend` opens up for second consumers
 
