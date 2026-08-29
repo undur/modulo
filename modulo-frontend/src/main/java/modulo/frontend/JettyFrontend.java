@@ -50,8 +50,9 @@ import modulo.frontend.tls.CertStore;
  * {@link CertStore}, applies redirect / canonical-hostname / ACME-challenge
  * policy, then hands off to a wrapped terminal handler (modulo's proxy).
  *
- * Iteration 1: configuration is supplied directly (list of Sites + ACME
- * webroot). The Apache config reader builds the Site list.
+ * Configuration is supplied by the embedder (modulo builds the Site list
+ * from its sites config); this class deliberately knows nothing about where
+ * the configuration came from.
  */
 public class JettyFrontend {
 
@@ -370,10 +371,10 @@ public class JettyFrontend {
 	 * Wraps the terminal handler in Jetty's {@link CompressionHandler} so
 	 * proxied responses get gzipped when the client supports it.
 	 *
-	 * FIXME: Configurable. Every value below should eventually come from
-	 * per-Site (or global) configuration so operators can tune compression
-	 * per-deployment. The constants are spelled out so the future refactor
-	 * is mechanical. // 2026-05-21
+	 * FIXME: Configurable. The tuning knobs (the COMPRESS_* class constants,
+	 * surfaced in the admin UI's configuration inventory) should come from
+	 * per-Site (or global) configuration — see the roadmap's tuning-surface
+	 * item; compression is the natural per-site pilot. // 2026-05-21
 	 */
 	private static Handler buildCompressionHandler( final Handler downstream ) {
 		final GzipEncoderConfig encoderConfig = new GzipEncoderConfig();

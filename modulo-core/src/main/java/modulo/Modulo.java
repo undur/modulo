@@ -90,7 +90,9 @@ public class Modulo {
 	private final int _port;
 
 	/**
-	 * FIXME: We're going to want to hold multiple adaptor configuration sources // Hugi 2025-05-02
+	 * FIXME: We're going to want to hold multiple adaptor configuration
+	 * sources — roadmap iteration 7's config-declared supervised apps are
+	 * exactly this // Hugi 2025-05-02
 	 */
 	private AdaptorConfig _adaptorConfig;
 
@@ -469,7 +471,9 @@ public class Modulo {
 	public void reloadAdaptorConfig() {
 		_adaptorConfig = fetchAdaptorConfig();
 
-		// FIXME: Hardcoded modulo reference should not really be present // Hugi 2026-01-28
+		// FIXME: Hardcoded modulo reference should not really be present —
+		// its proper home is a second adaptor-config source (config-declared
+		// apps, roadmap iteration 7) // Hugi 2026-01-28
 		final Map<String, App> applications = new HashMap<>( _adaptorConfig.applications() );
 		final App moduloApp = new App( "Modulo", List.of( new Instance( 1, "localhost", 45678 ) ) );
 		applications.put( "Modulo", moduloApp );
