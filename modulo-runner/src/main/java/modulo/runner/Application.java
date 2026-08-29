@@ -40,6 +40,13 @@ public class Application extends NGApplication {
 	/** The loaded modulo.conf properties, kept around for later lookups (admin password). */
 	private final Properties _config;
 
+	/** When this modulo started, for the start page's uptime display. */
+	private static final java.time.Instant _startedAt = java.time.Instant.now();
+
+	public static java.time.Instant startedAt() {
+		return _startedAt;
+	}
+
 	public static void main( String[] args ) {
 		NGApplication.run( args, Application.class );
 	}
@@ -109,10 +116,21 @@ public class Application extends NGApplication {
 	public Routes routes() {
 		return Routes
 				.create()
-				.map( "/WOAdaptorInfo", request -> new NGResponse( _modulo.adaptorConfig().toString(), 200 ) )
-				.map( "/overview", this::overviewPage )
+				.map( "/WOAdaptorInfo", request -> guardedPlain( request, () -> new NGResponse( _modulo.adaptorConfig().toString(), 200 ) ) )
+				.map( "/overview", request -> guardedPage( request, MDOverviewPage.class ) )
+				.map( "/adaptor", request -> guardedPage( request, MDAdaptorPage.class ) )
 				.map( "/reload", this::reloadAction )
-				.map( "/", MDStartPage.class );
+				.map( "/", request -> guardedPage( request, MDStartPage.class ) );
+	}
+
+	private NGActionResults guardedPage( final NGRequest request, final Class<? extends ng.appserver.templating.NGComponent> pageClass ) {
+		final NGActionResults denied = adminGuard( request );
+		return denied != null ? denied : pageWithName( pageClass, request.context() );
+	}
+
+	private NGActionResults guardedPlain( final NGRequest request, final java.util.function.Supplier<NGActionResults> action ) {
+		final NGActionResults denied = adminGuard( request );
+		return denied != null ? denied : action.get();
 	}
 
 	/**
@@ -143,8 +161,8 @@ public class Application extends NGApplication {
 	}
 
 	/**
-	 * The configuration overview, guarded by the {@code modulo.admin-password}
-	 * property from modulo.conf:
+	 * The shared guard for all admin pages/endpoints, driven by the
+	 * {@code modulo.admin-password} property from modulo.conf:
 	 *
 	 * <ul>
 	 * <li>Password set → HTTP Basic auth required (any username), always.
@@ -152,19 +170,6 @@ public class Application extends NGApplication {
 	 * (no WOMonitor), so a configured password must win over the mode.</li>
 	 * <li>No password → open in development mode, disabled in production.</li>
 	 * </ul>
-	 */
-	private NGActionResults overviewPage( final NGRequest request ) {
-		final NGActionResults denied = adminGuard( request );
-
-		if( denied != null ) {
-			return denied;
-		}
-
-		return pageWithName( MDOverviewPage.class, request.context() );
-	}
-
-	/**
-	 * The shared guard for admin endpoints.
 	 *
 	 * @return null when the request may proceed, otherwise the response to send instead
 	 */

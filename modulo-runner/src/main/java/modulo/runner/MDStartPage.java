@@ -1,19 +1,23 @@
 package modulo.runner;
 
-import java.util.List;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 
 import modulo.Modulo;
-import modulo.woadaptorconfig.model.App;
-import modulo.woadaptorconfig.model.Instance;
-import ng.appserver.NGActionResults;
 import ng.appserver.NGApplication;
 import ng.appserver.NGContext;
 import ng.appserver.templating.NGComponent;
 
+/**
+ * The admin start page: a glance at what this modulo is and is doing.
+ * The details live on the other pages — /adaptor for apps/instances,
+ * /overview for sites and certificates.
+ */
 public class MDStartPage extends NGComponent {
 
-	public App currentApplication;
-	public Instance currentInstance;
+	private static final DateTimeFormatter STARTED_FORMAT = DateTimeFormatter.ofPattern( "yyyy-MM-dd HH:mm 'UTC'" ).withZone( ZoneOffset.UTC );
 
 	public MDStartPage( NGContext context ) {
 		super( context );
@@ -23,17 +27,34 @@ public class MDStartPage extends NGComponent {
 		return ((Application)NGApplication.application()).modulo();
 	}
 
-	public NGActionResults reloadAdaptorConfig() {
-		modulo().reloadAdaptorConfig();
-		return null;
+	public String started() {
+		final Instant startedAt = Application.startedAt();
+		return "%s (up %s)".formatted( STARTED_FORMAT.format( startedAt ), humanDuration( Duration.between( startedAt, Instant.now() ) ) );
 	}
 
-	public List<App> applications() {
-		return modulo()
-				.adaptorConfig()
-				.applications()
-				.values()
-				.stream()
-				.toList();
+	public String proxyPort() {
+		return String.valueOf( Config.MODULO_PROXY_PORT );
+	}
+
+	public String frontendStatus() {
+		if( modulo().sitesConfig() == null ) {
+			return "not active — plain reverse proxy only";
+		}
+		return "active — %d site(s), %d ACME-managed".formatted( modulo().sitesConfig().sites().size(), modulo().sitesConfig().acmeManagedSites().size() );
+	}
+
+	public String applicationCount() {
+		return "%d app(s) known to wotaskd".formatted( modulo().adaptorConfig().applications().size() );
+	}
+
+	private static String humanDuration( final Duration duration ) {
+		final long days = duration.toDays();
+		if( days > 0 ) {
+			return "%dd %dh".formatted( days, duration.toHoursPart() );
+		}
+		if( duration.toHours() > 0 ) {
+			return "%dh %dm".formatted( duration.toHours(), duration.toMinutesPart() );
+		}
+		return "%dm".formatted( duration.toMinutes() );
 	}
 }

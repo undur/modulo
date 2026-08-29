@@ -1,0 +1,26 @@
+<wo:MDLook>
+	<div class="row">
+		<div class="col-lg-6 col-md-10 col-sm-12">
+			<div class="card mb-3">
+				<div class="card-header">
+					<h3>Applications and instances</h3>
+				</div>
+				<table class="table table-sm mb-0">
+					<wo:repetition list="$applications" item="$currentApplication">
+						<tr>
+							<td colspan="3"><strong><wo:str value="$currentApplication.name" /></strong></td>
+						</tr>
+						<wo:repetition list="$currentApplication.instances" item="$currentInstance">
+							<tr>
+								<td><wo:str value="$currentInstance.id" /></td>
+								<td><wo:str value="$currentInstance.host" /></td>
+								<td><wo:str value="$currentInstance.port" /></td>
+							</tr>
+						</wo:repetition>
+					</wo:repetition>
+				</table>
+			</div>
+			<wo:link action="$reloadAdaptorConfig" class="btn btn-default">Reload adaptor config</wo:link>
+		</div>
+	</div>
+</wo:MDLook>
