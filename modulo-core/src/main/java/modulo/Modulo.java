@@ -555,6 +555,9 @@ public class Modulo {
 		return new AdaptorConfigParser( host, port, password ).fetchAdaptorConfig();
 	}
 
+	/** Selects which instance of an app serves each request (pinning + round-robin). */
+	private final InstanceSelector _instanceSelector = new InstanceSelector();
+
 	/**
 	 * @return A Function that generates the instance URI to target
 	 */
@@ -562,22 +565,33 @@ public class Modulo {
 		return request -> {
 			final HttpURI originalURI = request.getHttpURI();
 
-			final String applicationName = applicationNameFromURI( originalURI, this::appForHost );
+			final RequestTarget target = targetFromURI( originalURI, this::appForHost );
 
-			final App application = _adaptorConfig.application( applicationName );
+			final App application = _adaptorConfig.application( target.applicationName() );
 
 			if( application == null ) {
-				throw new ProxyRoutingException( ErrorCondition.APP_UNAVAILABLE, "No application found with the name %s".formatted( applicationName ) );
+				throw new ProxyRoutingException( ErrorCondition.APP_UNAVAILABLE, "No application found with the name %s".formatted( target.applicationName() ) );
 			}
 
 			final List<Instance> instances = application.instances();
 
 			if( instances.isEmpty() ) {
-				throw new ProxyRoutingException( ErrorCondition.NO_INSTANCES, "No instances registered for application %s".formatted( applicationName ) );
+				throw new ProxyRoutingException( ErrorCondition.NO_INSTANCES, "No instances registered for application %s".formatted( target.applicationName() ) );
 			}
 
-			// FIXME: We're hardcoding targeting the first instance for testing // Hugi 2025-04-22
-			final Instance targetInstance = instances.getFirst();
+			// The request is pinned to an instance by an explicit .woa/N/ URL
+			// segment, or failing that by the woinst cookie (WO sessions are
+			// instance-local). Unpinned requests are balanced round-robin.
+			final Integer requestedInstance = target.instanceNumber() != null ? target.instanceNumber() : woinstCookie( request );
+			final InstanceSelector.Selection selection = _instanceSelector.select( application, requestedInstance );
+
+			if( selection.fellBack() ) {
+				logger.warn( "Instance {} of {} is no longer registered — rerouting to instance {}", requestedInstance, application.name(), selection.instance().id() );
+				_events.add( Event.Severity.WARN, "instance-rerouted", originalURI.getHost(), application.name(),
+						"Pinned instance %d is gone; request rerouted to instance %d (session lost)".formatted( requestedInstance, selection.instance().id() ) );
+			}
+
+			final Instance targetInstance = selection.instance();
 
 			final String hostName = targetInstance.host();
 			final int port = targetInstance.port();
@@ -596,10 +610,16 @@ public class Modulo {
 	}
 
 	/**
-	 * @param appForHost Resolves a hostname to the app serving it (null when unknown)
-	 * @return The name of the application from the given URI
+	 * The application a request routes to, plus the instance the URL pins it
+	 * to ({@code .woa/N/} segment) — null when the URL carries no instance.
 	 */
-	static String applicationNameFromURI( final HttpURI uri, final Function<String, String> appForHost ) {
+	record RequestTarget( String applicationName, Integer instanceNumber ) {}
+
+	/**
+	 * @param appForHost Resolves a hostname to the app serving it (null when unknown)
+	 * @return The application (and URL-pinned instance, if any) targeted by the given URI
+	 */
+	static RequestTarget targetFromURI( final HttpURI uri, final Function<String, String> appForHost ) {
 
 		final String uriString = uri.getPath();
 
@@ -609,7 +629,7 @@ public class Modulo {
 			final String domainDefaultAppName = appForHost.apply( host );
 
 			if( domainDefaultAppName != null ) {
-				return domainDefaultAppName;
+				return new RequestTarget( domainDefaultAppName, null );
 			}
 
 			throw new ProxyRoutingException( ErrorCondition.NO_APP_FOR_HOST, "The uri '%s' does not start with an adaptor URL and host '%s' has no app configured".formatted( uriString, host ) );
@@ -617,12 +637,42 @@ public class Modulo {
 
 		String appName = uriString.substring( ADAPTOR_URL.length() );
 
-		int periodIndex = appName.indexOf( ".woa" );
+		final int periodIndex = appName.indexOf( ".woa" );
 
-		if( periodIndex > -1 ) {
-			appName = appName.substring( 0, periodIndex );
+		if( periodIndex == -1 ) {
+			return new RequestTarget( appName, null );
 		}
 
-		return appName;
+		// A digits-only segment right after ".woa/" pins the request to that instance (mod_WebObjects convention)
+		final String afterWoa = appName.substring( periodIndex + ".woa".length() );
+		appName = appName.substring( 0, periodIndex );
+
+		if( afterWoa.startsWith( "/" ) ) {
+			final int nextSlash = afterWoa.indexOf( '/', 1 );
+			final String segment = nextSlash == -1 ? afterWoa.substring( 1 ) : afterWoa.substring( 1, nextSlash );
+			if( !segment.isEmpty() && segment.chars().allMatch( Character::isDigit ) ) {
+				return new RequestTarget( appName, Integer.valueOf( segment ) );
+			}
+		}
+
+		return new RequestTarget( appName, null );
+	}
+
+	/**
+	 * @return The instance number from the request's {@code woinst} cookie,
+	 *         null when absent or unparsable. WO traditionally quotes the
+	 *         cookie value.
+	 */
+	static Integer woinstCookie( final Request request ) {
+		for( final org.eclipse.jetty.http.HttpCookie cookie : Request.getCookies( request ) ) {
+			if( "woinst".equals( cookie.getName() ) ) {
+				final String value = cookie.getValue().replace( "\"", "" ).trim();
+				if( !value.isEmpty() && value.chars().allMatch( Character::isDigit ) ) {
+					return Integer.valueOf( value );
+				}
+				return null;
+			}
+		}
+		return null;
 	}
 }
