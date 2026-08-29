@@ -236,7 +236,10 @@ class ModuloProxy extends ProxyHandler.Reverse {
 				adjusted |= !corrected.equals( value );
 				value = corrected;
 			}
-			else if( value.startsWith( "wosid=" ) ) {
+			else if( value.startsWith( "wosid=" ) || value.startsWith( "ngsid=" ) ) {
+				// wosid = classic WO session, ngsid = ng-objects session. ng
+				// apps are deliberately instance-ignorant — the proxy owns
+				// their affinity cookie entirely.
 				sessionPresent = true;
 			}
 			cookies.add( value );

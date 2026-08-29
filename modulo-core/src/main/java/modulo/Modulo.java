@@ -841,11 +841,12 @@ public class Modulo {
 	 *         cookie value.
 	 */
 	/**
-	 * @return True if the request carries a WO session cookie
+	 * @return True if the request carries a session cookie — classic WO
+	 *         ({@code wosid}) or ng-objects ({@code ngsid})
 	 */
 	static boolean hasSessionCookie( final Request request ) {
 		for( final org.eclipse.jetty.http.HttpCookie cookie : Request.getCookies( request ) ) {
-			if( "wosid".equals( cookie.getName() ) && !cookie.getValue().isBlank() ) {
+			if( ("wosid".equals( cookie.getName() ) || "ngsid".equals( cookie.getName() )) && !cookie.getValue().isBlank() ) {
 				return true;
 			}
 		}

@@ -47,6 +47,16 @@ class WoinstCorrectionTest {
 		assertEquals( List.of( "wosid=abc; path=/", "woinst=3; path=/" ), cookies( headers ) );
 	}
 
+	/** ng-objects sessions get proxy-owned affinity: ngsid triggers a woinst just like wosid. */
+	@Test
+	void ngSessionGetsAffinityCookie() {
+		final HttpFields.Mutable headers = HttpFields.build();
+		headers.add( HttpHeader.SET_COOKIE, "ngsid=xyz; path=/" );
+
+		ModuloProxy.ensureTruthfulWoinst( 2, headers );
+		assertEquals( List.of( "ngsid=xyz; path=/", "woinst=2; path=/" ), cookies( headers ) );
+	}
+
 	@Test
 	void sessionlessResponseIsUntouched() {
 		final HttpFields.Mutable headers = HttpFields.build();

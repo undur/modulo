@@ -34,6 +34,7 @@ public class MDApplicationsPage extends NGComponent {
 				.applications()
 				.values()
 				.stream()
+				.sorted( java.util.Comparator.comparing( app -> app.name().toLowerCase() ) )
 				.toList();
 	}
 
