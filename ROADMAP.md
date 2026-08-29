@@ -161,6 +161,11 @@ should be designed together so the schema grows coherently:
   hostname elsewhere (`redirect_to`), no app — rebrands, domain
   consolidation, typo-domains. Currently in brainstorming; decide the
   shape alongside the above.
+- **TOML as the operator-facing format** — analyzed and viable
+  (dual-format via extension dispatch, same DTOs and validation, JSON
+  stays as the admin-API wire format); deliberately parked until we
+  have more operational experience with the current environment.
+  (Issue: #10)
 
 ### HTTP/3 via a fleet certificate
 
