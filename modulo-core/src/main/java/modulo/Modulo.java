@@ -85,6 +85,20 @@ public class Modulo {
 	public static final int EVENT_BUFFER_CAPACITY = 1000;
 
 	/**
+	 * How long an instance stays out of rotation after a failed connect
+	 * (cleared instantly by any successful response). mod_WebObjects calls
+	 * this "dormant", same default. FIXME: Make configurable // 2026-08-29
+	 */
+	public static final Duration DEAD_COOLDOWN = Duration.ofSeconds( 30 );
+
+	/**
+	 * Minimum spacing between out-of-band adaptor-config refreshes (triggered
+	 * by requests naming unknown apps/instances) — keeps a burst of requests
+	 * for a nonexistent app from hammering wotaskd.
+	 */
+	public static final Duration FORCED_REFRESH_DEBOUNCE = Duration.ofSeconds( 3 );
+
+	/**
 	 * The port to the proxy will run on
 	 */
 	private final int _port;
@@ -468,6 +482,28 @@ public class Modulo {
 		}
 	}
 
+	/** When the last out-of-band (request-triggered) config refresh ran, for debouncing. */
+	private volatile java.time.Instant _lastForcedRefresh = java.time.Instant.EPOCH;
+
+	/**
+	 * Re-polls wotaskd immediately, outside the regular poll interval —
+	 * triggered by a request naming an app the current config doesn't know.
+	 * Debounced so a burst of requests for a genuinely nonexistent app can't
+	 * hammer wotaskd.
+	 *
+	 * @return True if a refresh was actually performed
+	 */
+	private synchronized boolean forceAdaptorConfigRefresh( final String applicationName ) {
+		if( java.time.Instant.now().isBefore( _lastForcedRefresh.plus( FORCED_REFRESH_DEBOUNCE ) ) ) {
+			return false;
+		}
+		_lastForcedRefresh = java.time.Instant.now();
+		logger.info( "Request for unknown app {} — forcing an out-of-band adaptor config refresh", applicationName );
+		_events.add( Event.Severity.INFO, "config-refresh-forced", null, applicationName, "Request named unknown app '%s'; adaptor config re-polled out of band".formatted( applicationName ) );
+		reloadAdaptorConfig();
+		return true;
+	}
+
 	public void reloadAdaptorConfig() {
 		_adaptorConfig = fetchAdaptorConfig();
 
@@ -479,6 +515,19 @@ public class Modulo {
 		applications.put( "Modulo", moduloApp );
 
 		_adaptorConfig = new AdaptorConfig( applications );
+
+		// Config-declared refusal: an instance flagged refuseNewSessions=YES
+		// in the adaptor config is marked refusing for a few poll intervals —
+		// continuously re-marked while the flag persists, expiring naturally
+		// once it's removed. Same steering machinery as header-announced
+		// refusal.
+		for( final App application : applications.values() ) {
+			for( final Instance instance : application.instances() ) {
+				if( instance.refuseNewSessions() ) {
+					markRefusingWithEvent( application.name(), instance.id(), (int)DEFAULT_CONFIG_RELOAD_DURATION.toSeconds() * 3 );
+				}
+			}
+		}
 	}
 
 	public AdaptorConfig adaptorConfig() {
@@ -573,11 +622,8 @@ public class Modulo {
 
 		@Override
 		public void refusing( final String applicationName, final int instanceId, final int timeoutSeconds ) {
-			final boolean transition = _instanceSelector.markRefusing( applicationName, instanceId, Duration.ofSeconds( timeoutSeconds ) );
-			if( transition ) {
-				logger.info( "Instance {} of {} is refusing new sessions — steering new traffic to other instances", instanceId, applicationName );
-				_events.add( Event.Severity.INFO, "instance-refusing", null, applicationName, "Instance %d is refusing new sessions; new traffic steered elsewhere while its sessions drain".formatted( instanceId ) );
-			}
+			markRefusingWithEvent( applicationName, instanceId, timeoutSeconds );
+			proofOfLife( applicationName, instanceId );
 		}
 
 		@Override
@@ -587,14 +633,47 @@ public class Modulo {
 				logger.info( "Instance {} of {} is accepting new sessions again", instanceId, applicationName );
 				_events.add( Event.Severity.INFO, "instance-accepting", null, applicationName, "Instance %d is accepting new sessions again".formatted( instanceId ) );
 			}
+			proofOfLife( applicationName, instanceId );
+		}
+
+		@Override
+		public void unreachable( final String applicationName, final int instanceId ) {
+			final boolean transition = _instanceSelector.markDead( applicationName, instanceId, DEAD_COOLDOWN );
+			if( transition ) {
+				logger.warn( "Instance {} of {} is unreachable — out of rotation for {} (or until it responds)", instanceId, applicationName, DEAD_COOLDOWN );
+				_events.add( Event.Severity.WARN, "instance-unreachable", null, applicationName, "Instance %d is unreachable; out of rotation for %ds unless it responds sooner".formatted( instanceId, DEAD_COOLDOWN.toSeconds() ) );
+			}
 		}
 	};
+
+	private void markRefusingWithEvent( final String applicationName, final int instanceId, final int timeoutSeconds ) {
+		final boolean transition = _instanceSelector.markRefusing( applicationName, instanceId, Duration.ofSeconds( timeoutSeconds ) );
+		if( transition ) {
+			logger.info( "Instance {} of {} is refusing new sessions — steering new traffic to other instances", instanceId, applicationName );
+			_events.add( Event.Severity.INFO, "instance-refusing", null, applicationName, "Instance %d is refusing new sessions; new traffic steered elsewhere while its sessions drain".formatted( instanceId ) );
+		}
+	}
+
+	/** Any response from an instance clears its dead mark — refusing or not, it's alive. */
+	private void proofOfLife( final String applicationName, final int instanceId ) {
+		if( _instanceSelector.clearDead( applicationName, instanceId ) ) {
+			logger.info( "Instance {} of {} responded — back in rotation", instanceId, applicationName );
+			_events.add( Event.Severity.INFO, "instance-recovered", null, applicationName, "Instance %d responded and is back in rotation".formatted( instanceId ) );
+		}
+	}
 
 	/**
 	 * @return True if the given instance is currently marked refusing new sessions — for the admin UI
 	 */
 	public boolean instanceRefusing( final String applicationName, final int instanceId ) {
 		return _instanceSelector.isRefusing( applicationName, instanceId );
+	}
+
+	/**
+	 * @return True if the given instance is in its post-connect-failure cool-down — for the admin UI
+	 */
+	public boolean instanceDead( final String applicationName, final int instanceId ) {
+		return _instanceSelector.isDead( applicationName, instanceId );
 	}
 
 	/**
@@ -606,7 +685,18 @@ public class Modulo {
 
 			final RequestTarget target = targetFromURI( originalURI, this::appForHost );
 
-			final App application = _adaptorConfig.application( target.applicationName() );
+			App application = _adaptorConfig.application( target.applicationName() );
+
+			// A request naming an app (or an app with no instances yet) the
+			// last config poll didn't know about may simply have raced a
+			// fresh deployment — force an out-of-band re-poll (debounced)
+			// and look again before failing. Cuts deployment turnaround from
+			// "wait for the poll" to "first request finds it".
+			if( application == null || application.instances().isEmpty() ) {
+				if( forceAdaptorConfigRefresh( target.applicationName() ) ) {
+					application = _adaptorConfig.application( target.applicationName() );
+				}
+			}
 
 			if( application == null ) {
 				throw new ProxyRoutingException( ErrorCondition.APP_UNAVAILABLE, "No application found with the name %s".formatted( target.applicationName() ) );
@@ -618,33 +708,57 @@ public class Modulo {
 				throw new ProxyRoutingException( ErrorCondition.NO_INSTANCES, "No instances registered for application %s".formatted( target.applicationName() ) );
 			}
 
-			// The request is pinned to an instance by an explicit .woa/N/ URL
-			// segment, or failing that by the woinst cookie (WO sessions are
-			// instance-local). Unpinned requests are balanced round-robin.
-			Integer requestedInstance = target.instanceNumber() != null ? target.instanceNumber() : woinstCookie( request );
+			final Instance targetInstance;
 
-			// A pin only matters for continuing a session. A session-less
-			// request pinned to a refusing instance would just get bounced
-			// (WO answers it with a rebalance redirect) — route it to a
-			// willing instance directly instead.
-			if( requestedInstance != null && _instanceSelector.isRefusing( target.applicationName(), requestedInstance ) && !hasSessionCookie( request ) ) {
-				requestedInstance = null;
+			@SuppressWarnings( "unchecked" )
+			final Set<Integer> attempted = (Set<Integer>)request.getAttribute( ModuloProxy.ATTEMPTED_INSTANCES_ATTRIBUTE );
+
+			if( attempted != null && !attempted.isEmpty() ) {
+				// Failover retry: the previous instance was unreachable — pick
+				// among the not-yet-attempted; none left means the app is down.
+				targetInstance = _instanceSelector.selectForRetry( application, attempted );
+				if( targetInstance == null ) {
+					throw new ProxyRoutingException( ErrorCondition.APP_UNAVAILABLE, "All %d instance(s) of %s were unreachable".formatted( instances.size(), application.name() ) );
+				}
+			}
+			else {
+				// The request is pinned to an instance by an explicit .woa/N/ URL
+				// segment, or failing that by the woinst cookie (WO sessions are
+				// instance-local). Unpinned requests are balanced round-robin.
+				Integer requestedInstance = target.instanceNumber() != null ? target.instanceNumber() : woinstCookie( request );
+
+				// A pin only matters for continuing a session. A session-less
+				// request pinned to a refusing instance would just get bounced
+				// (WO answers it with a rebalance redirect) — route it to a
+				// willing instance directly instead.
+				if( requestedInstance != null && _instanceSelector.isRefusing( target.applicationName(), requestedInstance ) && !hasSessionCookie( request ) ) {
+					requestedInstance = null;
+				}
+
+				final InstanceSelector.Selection selection = _instanceSelector.select( application, requestedInstance );
+
+				if( selection.fellBack() ) {
+					logger.warn( "Instance {} of {} is no longer registered — rerouting to instance {}", requestedInstance, application.name(), selection.instance().id() );
+					_events.add( Event.Severity.WARN, "instance-rerouted", originalURI.getHost(), application.name(),
+							"Pinned instance %d is gone; request rerouted to instance %d (session lost)".formatted( requestedInstance, selection.instance().id() ) );
+				}
+
+				targetInstance = selection.instance();
 			}
 
-			final InstanceSelector.Selection selection = _instanceSelector.select( application, requestedInstance );
-
-			if( selection.fellBack() ) {
-				logger.warn( "Instance {} of {} is no longer registered — rerouting to instance {}", requestedInstance, application.name(), selection.instance().id() );
-				_events.add( Event.Severity.WARN, "instance-rerouted", originalURI.getHost(), application.name(),
-						"Pinned instance %d is gone; request rerouted to instance %d (session lost)".formatted( requestedInstance, selection.instance().id() ) );
-			}
-
-			final Instance targetInstance = selection.instance();
-
-			// Record the routing decision so response observers (refusal
-			// detection) can attribute upstream headers to the right instance
+			// Record the routing decision so response observers (refusal/death
+			// detection) can attribute upstream events to the right instance,
+			// and track attempted instances for potential failover retries
 			request.setAttribute( ModuloProxy.TARGET_APP_ATTRIBUTE, application.name() );
 			request.setAttribute( ModuloProxy.TARGET_INSTANCE_ATTRIBUTE, targetInstance.id() );
+			if( attempted == null ) {
+				final Set<Integer> newAttempted = java.util.concurrent.ConcurrentHashMap.newKeySet();
+				newAttempted.add( targetInstance.id() );
+				request.setAttribute( ModuloProxy.ATTEMPTED_INSTANCES_ATTRIBUTE, newAttempted );
+			}
+			else {
+				attempted.add( targetInstance.id() );
+			}
 
 			final String hostName = targetInstance.host();
 			final int port = targetInstance.port();

@@ -19,6 +19,9 @@
 									<wo:if condition="$currentInstanceRefusing">
 										<span class="badge bg-orange-lt">refusing new sessions</span>
 									</wo:if>
+									<wo:if condition="$currentInstanceDead">
+										<span class="badge bg-red-lt">unreachable</span>
+									</wo:if>
 								</td>
 							</tr>
 						</wo:repetition>

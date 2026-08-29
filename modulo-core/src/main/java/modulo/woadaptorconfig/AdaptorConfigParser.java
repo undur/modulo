@@ -86,8 +86,10 @@ public class AdaptorConfigParser {
 						final String id = attributes.getNamedItem( "id" ).getNodeValue();
 						final String host = attributes.getNamedItem( "host" ).getNodeValue();
 						final String port = attributes.getNamedItem( "port" ).getNodeValue();
+						final Node refuseNode = attributes.getNamedItem( "refuseNewSessions" );
+						final boolean refuseNewSessions = refuseNode != null && "YES".equalsIgnoreCase( refuseNode.getNodeValue() );
 
-						final Instance instance = new Instance( Integer.valueOf( id ), host, Integer.valueOf( port ) );
+						final Instance instance = new Instance( Integer.valueOf( id ), host, Integer.valueOf( port ), refuseNewSessions );
 						application.instances().add( instance );
 					}
 				}

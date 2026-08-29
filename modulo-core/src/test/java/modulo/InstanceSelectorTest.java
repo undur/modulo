@@ -105,6 +105,49 @@ class InstanceSelectorTest {
 	}
 
 	@Test
+	void deadInstanceIsSkippedUntilCleared() {
+		final InstanceSelector selector = new InstanceSelector();
+		assertTrue( selector.markDead( APP.name(), 1, java.time.Duration.ofMinutes( 1 ) ) );
+
+		final Set<Instance> picked = IntStream.range( 0, 8 ).mapToObj( i -> selector.select( APP, null ).instance() ).collect( Collectors.toSet() );
+		assertEquals( Set.of( TWO, THREE ), picked );
+
+		assertTrue( selector.clearDead( APP.name(), 1 ) );
+		final Set<Instance> after = IntStream.range( 0, 9 ).mapToObj( i -> selector.select( APP, null ).instance() ).collect( Collectors.toSet() );
+		assertEquals( Set.of( ONE, TWO, THREE ), after );
+	}
+
+	@Test
+	void retrySelectionExcludesAttemptedAndExhausts() {
+		final InstanceSelector selector = new InstanceSelector();
+		final java.util.Set<Integer> attempted = new java.util.HashSet<>( List.of( 1 ) );
+
+		final Instance second = selector.selectForRetry( APP, attempted );
+		assertTrue( Set.of( TWO, THREE ).contains( second ) );
+		attempted.add( second.id() );
+
+		final Instance third = selector.selectForRetry( APP, attempted );
+		assertTrue( Set.of( TWO, THREE ).contains( third ) );
+		assertFalse( third.equals( second ) );
+		attempted.add( third.id() );
+
+		assertEquals( null, selector.selectForRetry( APP, attempted ) );
+	}
+
+	@Test
+	void retryPrefersLiveWillingInstances() {
+		final InstanceSelector selector = new InstanceSelector();
+		selector.markDead( APP.name(), 2, java.time.Duration.ofMinutes( 1 ) );
+
+		// 1 attempted, 2 dead → 3 is the only live remaining candidate
+		for( int i = 0; i < 4; i++ ) {
+			assertEquals( THREE, selector.selectForRetry( APP, Set.of( 1 ) ) );
+		}
+		// but with 1 and 3 attempted, dead 2 is still better than nothing
+		assertEquals( TWO, selector.selectForRetry( APP, Set.of( 1, 3 ) ) );
+	}
+
+	@Test
 	void roundRobinCountersAreIndependentPerApp() {
 		final App other = new App( "Other", List.of( ONE, TWO ) );
 		final InstanceSelector selector = new InstanceSelector();

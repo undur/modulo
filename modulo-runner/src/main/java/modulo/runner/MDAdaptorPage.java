@@ -43,4 +43,11 @@ public class MDAdaptorPage extends NGComponent {
 	public boolean currentInstanceRefusing() {
 		return modulo().instanceRefusing( currentApplication.name(), currentInstance.id() );
 	}
+
+	/**
+	 * @return True if the instance currently being rendered is in its dead cool-down
+	 */
+	public boolean currentInstanceDead() {
+		return modulo().instanceDead( currentApplication.name(), currentInstance.id() );
+	}
 }

@@ -38,6 +38,9 @@ class ModuloProxy extends ProxyHandler.Reverse {
 	static final String TARGET_APP_ATTRIBUTE = "modulo.target-app";
 	static final String TARGET_INSTANCE_ATTRIBUTE = "modulo.target-instance";
 
+	/** Request attribute: the Set&lt;Integer&gt; of instance ids already attempted for this request — non-null marks a failover retry in progress. */
+	static final String ATTEMPTED_INSTANCES_ATTRIBUTE = "modulo.attempted-instances";
+
 	/**
 	 * The response header a WO instance uses to announce it is refusing new
 	 * sessions, sent on normal (session-drain) responses. Its value is the
@@ -57,12 +60,15 @@ class ModuloProxy extends ProxyHandler.Reverse {
 	/** Refusal validity when the announcement carries no timeout (the redirection flag). */
 	static final int DEFAULT_REFUSAL_SECONDS = 60;
 
-	/** Notified about the refusing-new-sessions state observed on upstream responses. */
+	/** Notified about instance state observed on upstream responses and failures. */
 	interface RefusalObserver {
 		void refusing( String applicationName, int instanceId, int timeoutSeconds );
 
 		/** A response with no refusal announcement — the instance is (back to) accepting. */
 		void accepting( String applicationName, int instanceId );
+
+		/** A connect/send failure — the instance appears dead. */
+		void unreachable( String applicationName, int instanceId );
 	}
 
 	private final ErrorHandling _errorHandling;
@@ -264,18 +270,57 @@ class ModuloProxy extends ProxyHandler.Reverse {
 	}
 
 	/**
-	 * Failures on the proxy → app hop. We tag the request with the matching
-	 * ErrorCondition, then let Jetty's normal error flow run (which handles
-	 * aborting the upstream exchange correctly) — ModuloErrorHandler picks
-	 * the condition back up and renders its assigned response.
+	 * Failures on the proxy → app hop.
+	 *
+	 * A non-timeout failure (connect refused, connection reset) marks the
+	 * instance dead and — when the request is safely replayable (no body was
+	 * consumed) — triggers a failover retry: the request is re-handled, and
+	 * the URI rewriter selects a not-yet-attempted instance. Timeouts are
+	 * never retried (the app may have executed side effects).
+	 *
+	 * Terminal failures tag the request with the matching ErrorCondition and
+	 * let Jetty's normal error flow run — ModuloErrorHandler picks the
+	 * condition back up and renders its assigned response.
 	 */
 	@Override
 	protected void onServerToProxyResponseFailure( Request clientToProxyRequest, org.eclipse.jetty.client.Request proxyToServerRequest, Response serverToProxyResponse, org.eclipse.jetty.server.Response proxyToClientResponse, Callback proxyToClientCallback, Throwable failure ) {
 		final ErrorCondition condition = failure instanceof TimeoutException ? ErrorCondition.UPSTREAM_TIMEOUT : ErrorCondition.UPSTREAM_UNREACHABLE;
+
+		final String applicationName = (String)clientToProxyRequest.getAttribute( TARGET_APP_ATTRIBUTE );
+		final Integer instanceId = (Integer)clientToProxyRequest.getAttribute( TARGET_INSTANCE_ATTRIBUTE );
+
+		if( condition == ErrorCondition.UPSTREAM_UNREACHABLE && _refusalObserver != null && applicationName != null && instanceId != null ) {
+			_refusalObserver.unreachable( applicationName, instanceId );
+
+			if( isReplayable( clientToProxyRequest ) ) {
+				logger.info( "Instance {} of {} unreachable — failing the request over to another instance", instanceId, applicationName );
+				try {
+					handle( clientToProxyRequest, proxyToClientResponse, proxyToClientCallback );
+					return;
+				}
+				catch( final Exception e ) {
+					logger.warn( "Failover re-handling failed: {}", e.toString() );
+					// fall through to the terminal error path
+				}
+			}
+		}
+
 		logger.warn( "{} proxying {}{} -> {}: {}", condition, clientToProxyRequest.getHttpURI().getHost(), clientToProxyRequest.getHttpURI().getPath(), proxyToServerRequest.getURI(), failure.toString() );
 		_eventLog.add( Event.Severity.ERROR, condition.name(), clientToProxyRequest.getHttpURI().getHost(), null, "upstream %s: %s".formatted( proxyToServerRequest.getURI(), failure.toString() ) );
 		clientToProxyRequest.setAttribute( ERROR_CONDITION_ATTRIBUTE, condition );
 		super.onServerToProxyResponseFailure( clientToProxyRequest, proxyToServerRequest, serverToProxyResponse, proxyToClientResponse, proxyToClientCallback, failure );
+	}
+
+	/**
+	 * @return True if the request can safely be re-sent to another instance:
+	 *         it must carry no body (a consumed body can't be replayed —
+	 *         mod_WebObjects buffered up to 1MB to widen this; we start with
+	 *         the body-less case, which covers ordinary page loads).
+	 */
+	static boolean isReplayable( final Request request ) {
+		// getLength() is -1 when there's no Content-Length header — which for
+		// a request means "no body" unless a Transfer-Encoding says otherwise
+		return request.getLength() <= 0 && request.getHeaders().get( HttpHeader.TRANSFER_ENCODING ) == null;
 	}
 
 	/**
