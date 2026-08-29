@@ -211,6 +211,7 @@ the front-end simply doesn't start.
 | `modulo.frontend.http-port` | `80` | Plain-HTTP connector (redirects + ACME challenges). |
 | `modulo.frontend.https-port` | `443` | TLS connector. |
 | `modulo.frontend.http3` | `false` | HTTP/3 (QUIC). Leave off for multi-site deployments — see "Deliberate non-goals" in the roadmap. |
+| `modulo.admin-password` | — | Guards the `/overview` configuration page (HTTP Basic, any username). When set, auth is always required; when unset, the page is open in development mode and disabled in production. |
 | `modulo.frontend.apache-config-file` | — | *Transitional.* Apache vhost manifest to import sites from; used only when no sites-file is set. |
 | `modulo.frontend.acme-webroot` | — | *Transitional.* Webroot where an external certbot writes HTTP-01 tokens. |
 

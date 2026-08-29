@@ -1,0 +1,95 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<title>Modulo — configuration overview</title>
+		<wo:stylesheet filename="tabler/css/tabler.min.css" />
+		<wo:script filename="tabler/js/tabler.min.js" />
+	</head>
+	<body>
+		<div class="page">
+			<div class="container-xl">
+				<div class="row">
+					<div class="col-md-6">
+						<div class="card m-3">
+							<div class="card-header">
+								<h3>Front-end</h3>
+							</div>
+							<table class="table table-sm mb-0">
+								<tr><td>Sites config</td><td><wo:str value="$sitesFile" /></td></tr>
+								<tr><td>Ports</td><td><wo:str value="$ports" /></td></tr>
+							</table>
+						</div>
+					</div>
+					<div class="col-md-6">
+						<div class="card m-3">
+							<div class="card-header">
+								<h3>ACME</h3>
+							</div>
+							<table class="table table-sm mb-0">
+								<tr><td>Contact</td><td><wo:str value="$acmeEmail" /></td></tr>
+								<tr><td>Directory</td><td><wo:str value="$acmeDirectory" /></td></tr>
+								<tr><td>Storage</td><td><wo:str value="$acmeStorage" /></td></tr>
+							</table>
+						</div>
+					</div>
+				</div>
+				<div class="row">
+					<div class="col-12">
+						<div class="card m-3">
+							<div class="card-header">
+								<h3>Sites</h3>
+							</div>
+							<wo:if condition="$hasSitesConfig" negate="true">
+								<div class="card-body">The native sites config is not active — modulo is running as a plain proxy (or on the transitional Apache import path).</div>
+							</wo:if>
+							<wo:if condition="$hasSitesConfig">
+								<table class="table table-sm mb-0">
+									<thead>
+										<tr>
+											<th>Canonical hostname</th>
+											<th>Aliases</th>
+											<th>App</th>
+											<th>TLS</th>
+											<th>Cert expires</th>
+											<th>Days left</th>
+											<th>Redirects</th>
+										</tr>
+									</thead>
+									<wo:repetition list="$sites" item="$currentSite">
+										<tr>
+											<td><strong><wo:str value="$currentSite.canonicalHostname" /></strong></td>
+											<td><wo:str value="$currentSite.aliases" /></td>
+											<td>
+												<wo:str value="$currentSite.app" />
+												<wo:if condition="$currentSite.appKnown" negate="true">
+													<span class="badge bg-red-lt">unknown to wotaskd</span>
+												</wo:if>
+											</td>
+											<td><wo:str value="$currentSite.tlsMode" /></td>
+											<td><wo:str value="$currentSite.certExpiry" /></td>
+											<td>
+												<wo:if condition="$currentSite.certExpiringSoon">
+													<span class="badge bg-orange-lt"><wo:str value="$currentSite.certDaysLeft" /></span>
+												</wo:if>
+												<wo:if condition="$currentSite.certExpiringSoon" negate="true">
+													<wo:str value="$currentSite.certDaysLeft" />
+												</wo:if>
+											</td>
+											<td><wo:str value="$currentSite.redirects" /></td>
+										</tr>
+									</wo:repetition>
+								</table>
+							</wo:if>
+						</div>
+					</div>
+				</div>
+				<div class="row">
+					<div class="col-12">
+						<div class="m-3"><a href="/">Start page</a></div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</body>
+</html>

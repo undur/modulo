@@ -93,6 +93,13 @@ public class Modulo {
 	private Map<String, String> _domainToAppMap;
 
 	/**
+	 * The parsed native sites config, when it is the active site source.
+	 * Null in plain-proxy mode and on the transitional Apache-import path.
+	 * Exposed for the overview page.
+	 */
+	private SitesConfig _sitesConfig;
+
+	/**
 	 * Construct a new instance running the plain reverse-proxy connector on
 	 * the given port, with no front-end (today's behavior).
 	 */
@@ -228,6 +235,7 @@ public class Modulo {
 
 		if( isRegularFile( config.sitesFile() ) ) {
 			sitesConfig = SitesConfigReader.read( config.sitesFile() );
+			_sitesConfig = sitesConfig;
 			sites = sitesConfig.frontendSites();
 			_domainToAppMap = sitesConfig.domainToAppMap();
 			logger.info( "Front-end configured with {} site(s) from {}", sites.size(), config.sitesFile() );
@@ -340,6 +348,21 @@ public class Modulo {
 
 	public AdaptorConfig adaptorConfig() {
 		return _adaptorConfig;
+	}
+
+	/**
+	 * @return The active native sites config, null when not in use (plain
+	 *         proxy or Apache-import path)
+	 */
+	public SitesConfig sitesConfig() {
+		return _sitesConfig;
+	}
+
+	/**
+	 * @return The front-end configuration, null when the front-end is disabled
+	 */
+	public FrontendConfig frontendConfig() {
+		return _frontendConfig;
 	}
 
 	private void startAdaptorConfigAutoReloader() {

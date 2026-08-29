@@ -2,8 +2,11 @@ package modulo.runner;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.util.Base64;
 import java.util.Properties;
 
 import org.slf4j.Logger;
@@ -11,7 +14,9 @@ import org.slf4j.LoggerFactory;
 
 import modulo.Modulo;
 import modulo.frontend.FrontendConfig;
+import ng.appserver.NGActionResults;
 import ng.appserver.NGApplication;
+import ng.appserver.NGRequest;
 import ng.appserver.NGResponse;
 import ng.plugins.Routes;
 
@@ -32,13 +37,16 @@ public class Application extends NGApplication {
 
 	private final Modulo _modulo;
 
+	/** The loaded modulo.conf properties, kept around for later lookups (admin password). */
+	private final Properties _config;
+
 	public static void main( String[] args ) {
 		NGApplication.run( args, Application.class );
 	}
 
 	public Application() {
-		final Properties config = loadConfig( CONFIG_FILE );
-		_modulo = new Modulo( Config.MODULO_PROXY_PORT, buildFrontendConfig( config ) );
+		_config = loadConfig( CONFIG_FILE );
+		_modulo = new Modulo( Config.MODULO_PROXY_PORT, buildFrontendConfig( _config ) );
 		_modulo.start();
 	}
 
@@ -105,6 +113,63 @@ public class Application extends NGApplication {
 		return Routes
 				.create()
 				.map( "/WOAdaptorInfo", request -> new NGResponse( _modulo.adaptorConfig().toString(), 200 ) )
+				.map( "/overview", this::overviewPage )
 				.map( "/", MDStartPage.class );
+	}
+
+	/**
+	 * The configuration overview, guarded by the {@code modulo.admin-password}
+	 * property from modulo.conf:
+	 *
+	 * <ul>
+	 * <li>Password set → HTTP Basic auth required (any username), always.
+	 * A standalone modulo looks like "development mode" to ng-appserver
+	 * (no WOMonitor), so a configured password must win over the mode.</li>
+	 * <li>No password → open in development mode, disabled in production.</li>
+	 * </ul>
+	 */
+	private NGActionResults overviewPage( final NGRequest request ) {
+		final String password = _config.getProperty( "modulo.admin-password" );
+
+		if( password != null && !password.isBlank() ) {
+			if( !basicAuthPasswordMatches( request, password ) ) {
+				final NGResponse response = new NGResponse( "Authentication required", 401 );
+				response.setHeader( "WWW-Authenticate", "Basic realm=\"modulo\"" );
+				return response;
+			}
+		}
+		else if( !isDevelopmentMode() ) {
+			return new NGResponse( "The overview page is disabled. Set modulo.admin-password in %s to enable it.".formatted( CONFIG_FILE ), 403 );
+		}
+
+		return pageWithName( MDOverviewPage.class, request.context() );
+	}
+
+	/**
+	 * @return True if the request carries HTTP Basic credentials whose
+	 *         password part matches [password]. The username is ignored.
+	 */
+	private static boolean basicAuthPasswordMatches( final NGRequest request, final String password ) {
+		final String header = request.headers().entrySet().stream()
+				.filter( e -> "authorization".equalsIgnoreCase( e.getKey() ) )
+				.flatMap( e -> e.getValue().stream() )
+				.findFirst()
+				.orElse( null );
+
+		if( header == null || !header.startsWith( "Basic " ) ) {
+			return false;
+		}
+
+		final String decoded;
+		try {
+			decoded = new String( Base64.getDecoder().decode( header.substring( "Basic ".length() ) ), StandardCharsets.UTF_8 );
+		}
+		catch( final IllegalArgumentException e ) {
+			return false;
+		}
+
+		final int colon = decoded.indexOf( ':' );
+		final String supplied = colon < 0 ? decoded : decoded.substring( colon + 1 );
+		return MessageDigest.isEqual( supplied.getBytes( StandardCharsets.UTF_8 ), password.getBytes( StandardCharsets.UTF_8 ) );
 	}
 }
