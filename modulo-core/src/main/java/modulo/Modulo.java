@@ -503,8 +503,14 @@ public class Modulo {
 		_lastForcedRefresh = java.time.Instant.now();
 		logger.info( "Request for unknown app {} — forcing an out-of-band adaptor config refresh", applicationName );
 		_events.add( Event.Severity.INFO, "config-refresh-forced", null, applicationName, "Request named unknown app '%s'; adaptor config re-polled out of band".formatted( applicationName ) );
-		reloadAdaptorConfig();
-		return true;
+		try {
+			reloadAdaptorConfig();
+			return true;
+		}
+		catch( final RuntimeException e ) {
+			logger.warn( "Forced adaptor config refresh failed (wotaskd down?): {}", e.toString() );
+			return false;
+		}
 	}
 
 	public void reloadAdaptorConfig() {
@@ -585,7 +591,15 @@ public class Modulo {
 		final TimerTask adaptorConfigReloadTask = new TimerTask() {
 			@Override
 			public void run() {
-				reloadAdaptorConfig();
+				// A thrown exception would permanently cancel the Timer —
+				// wotaskd being briefly down (a restart, a deploy) must not
+				// stop config polling forever. The old config keeps serving.
+				try {
+					reloadAdaptorConfig();
+				}
+				catch( final RuntimeException e ) {
+					logger.warn( "Adaptor config reload failed (wotaskd down?) — keeping current config: {}", e.toString() );
+				}
 			}
 		};
 
