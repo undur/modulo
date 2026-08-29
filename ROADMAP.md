@@ -227,12 +227,19 @@ they fit into related work, or when they become blockers:
   Apache's `ProxyPreserveHost On`. (Issue: #7)
 - **Multi-instance app routing** — *core landed 2026-08-29, verified
   live against a six-instance app*: `.woa/N/` URL pins, `woinst`
-  cookie stickiness, round-robin for unpinned requests, and
-  fall-back-with-event when a pinned instance is gone. Wonder's
-  `route_id` cookie is deliberately unneeded (it exists for balancers
-  that can't read WO's native pinning; modulo can). Remaining, per the
-  brainstorming notes: refusing-new-sessions handling, health
-  checks/failover, draining, pluggable strategies.
+  cookie stickiness, round-robin for unpinned requests,
+  fall-back-with-event when a pinned instance is gone, and — since
+  modulo owns the woinst cookie (apps only ever echo it) — browsers
+  heal on the first response after a failover. Refusing-new-sessions
+  is handled too (2026-08-29): both announcement headers observed,
+  new traffic steered away while pinned sessions drain, sessionless
+  pins rerouted past the WO rebalance-redirect, state cleared on the
+  first announcement-free response. Wonder's `route_id` cookie is
+  deliberately unneeded (it exists for balancers that can't read WO's
+  native pinning; modulo can). Remaining: health checks/failover,
+  draining on shutdown, strategies beyond round-robin — the
+  `x-webobjects-loadaverage` header (active session count) is the
+  ready-made input for least-loaded.
 - **Metrics endpoint and basic observability.** Health/readiness probes,
   cert expiry surfaces, renewal failure alerts. (The overview page
   covers the human-eyes case; this is the automation case.)
