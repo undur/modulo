@@ -53,9 +53,14 @@ public class AdaptorConfigParser {
 	 * @return The deserialized adaptor configuration, obtained from wotaskd
 	 */
 	public AdaptorConfig fetchAdaptorConfig() {
-		final AdaptorConfig config = new AdaptorConfig();
+		return parse( fetchAdaptorConfigDocument() );
+	}
 
-		final Document siteConfig = fetchAdaptorConfigDocument();
+	/**
+	 * @return The adaptor config deserialized from the given woconfig document
+	 */
+	static AdaptorConfig parse( final Document siteConfig ) {
+		final AdaptorConfig config = new AdaptorConfig();
 
 		final NodeList nodes = siteConfig
 				.getElementsByTagName( "adaptor" ).item( 0 )
@@ -72,8 +77,12 @@ public class AdaptorConfigParser {
 						.getNamedItem( "name" )
 						.getNodeValue();
 
-				final App application = new App( applicationName, new ArrayList<>() );
-				config.applications().put( application.name(), application );
+				// wotaskd may emit multiple <application> elements for the same
+				// name — one from the registered instances, one from the
+				// unknown-instance registry (negative ids). Merge their
+				// instances instead of letting the last element win (which
+				// once made a perfectly healthy instance invisible).
+				final App application = config.applications().computeIfAbsent( applicationName, name -> new App( name, new ArrayList<>() ) );
 
 				final NodeList instanceNodes = applicationNode.getChildNodes();
 
