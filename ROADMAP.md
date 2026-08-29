@@ -11,168 +11,83 @@ entries move from "Coming up" to "Done". When new direction emerges,
 the document gets edited rather than appended to.
 
 For ideas being considered but not yet committed to an iteration, see
-[`BRAINSTORMING.md`](BRAINSTORMING.md).
+[`BRAINSTORMING.md`](BRAINSTORMING.md). For how to set up and operate
+what exists today, see [`SETUP.md`](SETUP.md).
 
 ---
 
 ## Where we are today
 
 Modulo started as a thin reverse-proxy replacement for Apache's
-`mod_WebObjects`. It has now grown into a front-facing TLS-terminating
-HTTPS server for WO/ng-objects deployments — replacing Apache + certbot
-in production for a real fleet of sites.
+`mod_WebObjects`. It is now a standalone front-facing HTTPS server for
+WO/ng-objects deployments — Apache, mod_WebObjects and certbot fully
+retired in production for a real fleet of sites.
 
 Today modulo does:
 
-- HTTPS termination on port 443 (TCP, with HTTP/1.1 + HTTP/2 via ALPN)
-- HTTP/3 wired and ready (disabled in production pending upstream Jetty
-  fix for per-SNI cert selection — see "Deliberate non-goals" below)
-- SNI-keyed in-memory keystore with hot reload on cert-file change
-- HTTP→HTTPS redirect, canonical-hostname redirect
-- HTTP-01 challenge passthrough (so certbot keeps renewing certs)
-- gzip compression of proxied responses
-- Reverse-proxy hop to WO/ng-objects upstream apps (HTTP/1.1)
-- HTTP/2 cookie-header coalescing for upstream compatibility
-- Preserves the original Host authority on proxied requests
+- HTTPS termination on port 443 (TCP, with HTTP/1.1 + HTTP/2 via ALPN),
+  SNI across all configured sites
+- Automatic certificates: native ACME issuance and renewal
+  (Let's Encrypt by default), self-signed placeholders so TLS starts
+  before first issuance, hot-swapped certs without restarts
+- Native JSON sites config — a main file plus optional per-app
+  fragment files via `include` globs; strict validation; an importer
+  that converts an Apache + mod_WebObjects vhost setup in one command
+- Zero-restart config reload (`POST /reload`), validation-first — a
+  bad config is rejected with the exact error and changes nothing
+- Hostname → app routing from the sites config; reverse-proxy hop to
+  WO/ng-objects upstream apps (HTTP/1.1) with the WO-specific headers
+  and quirks handled (cookie coalescing, Host preservation)
+- HTTP→HTTPS redirect, canonical-hostname redirect, gzip compression
+- Typed error conditions (app down, no instances, unreachable,
+  timeout, unknown host) with correct statuses, a clean default error
+  page, and per-condition assignable responders
+- A password-guarded admin UI in modulo-runner: start page, adaptor
+  (apps/instances), configuration overview with cert expiry, reload
+- HTTP/3 wired and ready (disabled in production pending upstream
+  Jetty fix for per-SNI cert selection — see "Deliberate non-goals")
 
-The legacy plain-HTTP connector on port 1400 continues to run alongside
-the front-end as a safety net for deployments still transitioning.
+The plain-HTTP proxy connector (port 1400) still runs alongside the
+front-end, serving as a safety net and as the whole story for
+deployments that put modulo behind another web server.
 
-Site configuration is sourced from existing Apache vhost files via
-`ApacheConfigReader` — interim scaffolding. Domain → app routing is a
-hardcoded `Map<String, String>` in `Modulo.java`. Both are slated for
-replacement.
+## Done
+
+Compact record; the details live in git history and SETUP.md.
+
+- **Iteration 1 — Front-end mode** *(2026)*: TLS termination, SNI
+  keystore with hot reload, redirects, compression, challenge
+  passthrough; sites imported from Apache vhost files as scaffolding.
+- **Iteration 2 — `modulo-frontend` extracted** as its own Maven
+  module, giving the front-end/proxy boundary a build-time wall.
+  (Issues: #2, undur/wo-adaptor-jetty#2)
+- **Iteration 3 — Native config** *(2026-08-28/29)*: the JSON sites
+  config (single file + `include` fragments) became the sole source of
+  truth for sites, TLS and routing; strict parsing; zero-restart
+  reload. The Apache *runtime* import path and the hardcoded domain
+  map were deleted; the Apache reader lives on only as the one-shot
+  migration importer (`modulo.config.ApacheConfigImporter`) — the
+  right migration story for adopters coming from Apache +
+  mod_WebObjects. Remaining schema slots are under "Config schema
+  growth" below.
+- **Iteration 5 — Native ACME** *(2026-08-28)*: HTTP-01
+  issuance/renewal via acme4j; ACME is the config default (omit `tls`);
+  PEMs on disk under modulo's storage dir; placeholder-then-hot-swap
+  startup; renewal every 12h on missing/placeholder/expiring/
+  SAN-coverage triggers. The whole production fleet migrated in one
+  evening; certbot retired. Remaining: DNS-01 (below).
+- **Error handling, global layer** *(2026-08-29)*: `ErrorCondition` +
+  assignable responders + the default 🤖 error page. (Issue: #5, the
+  per-Site half remains.)
+- **Admin UI** *(2026-08-29)*: `/`, `/adaptor`, `/overview` (sites,
+  ACME, cert expiry), `/reload` — all behind one dispatch-level
+  password guard (which also closed ng's unauthenticated
+  `/ng/dev/terminate`, reachable due to deployment-mode misdetection;
+  the durable fix is undur/vermilingua-maven-plugin#52).
 
 ---
 
 ## Coming up
-
-### Iteration 2 — Extract `modulo-frontend` as a separate module
-
-The TLS termination, SNI cert handling, redirects, compression, and
-ACME-challenge passthrough are not specific to multi-app proxying —
-they're "front-facing HTTP server" concerns. Pull them out of
-`modulo-core` into their own Maven module *now*, even though the
-second consumer doesn't yet exist.
-
-Doing this early gives us:
-
-- A real package/dependency boundary so accidental coupling between the
-  front-end and the proxy gets caught at build time rather than later.
-- The right mental separation for iteration 3's config work — "is this
-  a Site-config concern (front-end) or a routing concern (proxy)?"
-  becomes a real question with a forced answer.
-- A clear API surface to react against when `wo-adaptor-jetty` and
-  other adaptors come to consume the library.
-
-Out of scope for this iteration: a standalone "embedded TLS for single
-WO/ng apps" story. That's later. This iteration is purely a *physical*
-separation; the only consumer is still modulo.
-
-(Issues: undur/modulo#2, undur/wo-adaptor-jetty#2)
-
-### Iteration 3 — Native config replaces Apache import
-
-Modulo's Site model becomes the operator-facing source of truth.
-The Apache config reader and hardcoded domain map both go away. After
-this iteration, modulo no longer reads any Apache config.
-
-The work in this iteration:
-
-- **Native config format and storage.** *Decided and implemented:* a
-  single JSON file (`modulo.frontend.sites-file`), parsed strictly —
-  unknown fields and duplicate hostnames refuse to start the front-end
-  rather than being skipped. `//` comments and trailing commas allowed.
-  The `tls` block is designed ACME-first: omitted tls (or
-  `"mode": "acme"`) is the intended future default and currently fails
-  with a "not implemented yet" message; `"mode": "manual"` carries
-  explicit cert/key paths. Started single-file; grew `include`
-  patterns (single-level globs, e.g. `/apps/*/conf/site.json`) the
-  same week — one config file for ~20 sites was already crowded, and
-  per-app site files keep each application's config self-contained.
-  The `acme`/`include` blocks remain main-file-only.
-- **Site model becomes routing source.** *Implemented:* each config
-  entry pairs a front-end Site with an `app` name
-  (`modulo.config.SitesConfig`); the frontend `Site` record itself
-  stays deliberately routing-free for iteration 4's sake. When the
-  native config is active, routing comes from it; otherwise the
-  hardcoded `DomainApp` map still serves the Apache-import path.
-  (Issues: TBD, parent #2)
-- **Per-site rewrite rules.** Path-prefix rewrites with explicit choice
-  of 301 redirect, 302 redirect, or internal passthrough. Replaces the
-  Apache `RewriteRule` directives we've been ignoring. (Issue: #4)
-- **Multiple hostnames per Site with canonical policy.** Already
-  partially present from iteration 1; survives the config rewrite with
-  the same defaults (canonical redirect on, HTTPS redirect on).
-- **Security response headers in the schema.** The Site config needs
-  fields for HSTS and (opt-in) a small set of other proxy-level
-  security headers. Implementation can come later; the *shape* has to
-  be settled when the schema is, so operators don't end up with two
-  config syntaxes for the same Site. (Issue: #8)
-
-The Apache machinery's fate (settled 2026-08-29, once production ran
-fully on the native config): the *runtime* Apache-import path was
-deleted — it was a migration convenience for modulo's own development,
-and every future schema feature would have had to answer for it. The
-*importer* (`modulo.config.ApacheConfigImporter` + the vhost reader)
-stays: modulo's natural adopters run Apache + mod_WebObjects + certbot,
-and "one command turns your vhosts into a working sites.json" is the
-migration story for them — a one-shot converter, never a runtime
-dependency.
-
-### Iteration 4 — `modulo-frontend` opens up for second consumers
-
-With the module already separated (iteration 2) and the config model
-stable (iteration 3), this iteration is about making the front-end
-genuinely consumable from outside modulo. Most likely consumer:
-`wo-adaptor-jetty`, giving single WO apps a real front door without
-needing modulo or Apache.
-
-The shape of *how* an embedded consumer configures the front-end is
-distinct from how modulo configures it — that's its own design
-discussion, taken up when the work starts.
-
-(Issues: undur/wo-adaptor-jetty#2)
-
-### Iteration 5 — Native ACME, retire certbot dependency
-
-*Core implemented* (`modulo.frontend.tls.acme`, acme4j 3.5.1): modulo
-issues and renews its own certificates via ACME HTTP-01, with certbot
-needed only for sites still in `manual` TLS mode.
-
-How it works:
-
-- ACME is the config default: a site with no `tls` block is
-  ACME-managed. Requires the top-level `acme` block ({email, storage,
-  optional directory — `letsencrypt` (default), `letsencrypt-staging`,
-  or any directory URI, e.g. a local Pebble for testing}).
-- Issued PEMs are written to `<storage>/sites/<host>/{cert,key}.pem`
-  and the Site's cert/key paths point there — CertStore's existing
-  loading/hot-reload machinery works unchanged, and openssl-style
-  inspection keeps working.
-- No startup-order gymnastics: a managed site with no cert yet gets a
-  self-signed placeholder so the TLS connector starts immediately; the
-  real cert is ordered in the background once the HTTP connector is
-  answering challenges, and hot-swapped in via CertStore reload.
-  Initial issuance and renewal are the same code path.
-- HTTP-01 challenges are answered from memory by the front-end's
-  challenge handler; the certbot webroot passthrough remains as a
-  second source for not-yet-migrated sites.
-- Renewal loop: check every 12h, reissue when the cert is missing,
-  self-signed, expiring within 30 days, or no longer covers the
-  site's configured hostnames (alias added). Failures are logged
-  loudly and retried; the site keeps serving its current cert.
-
-In production since 2026-08-28: the whole hz1 fleet (22 sites) runs on
-native ACME; certbot and Apache are retired there.
-
-Still to come:
-
-- ACME DNS-01 for wildcards and where HTTP-01 is impractical
-- Renewal failure observability beyond logs — ties into the metrics/
-  expiry-surfacing work in iteration 6+
-
-(Issues: TBD, parent #2)
 
 ### Iteration 6 — WebSocket proxying
 
@@ -186,8 +101,7 @@ connection fails.
 
 This hasn't bitten because classic WO apps don't use WebSockets — but
 ng-objects now supports them, so this must land before ng apps behind
-modulo start relying on that. A real-world-sized limitation, promoted
-from brainstorming accordingly.
+modulo start relying on that.
 
 Chosen approach: **raw tunnel after handshake**. Detect
 `Upgrade: websocket` ahead of the proxy handler, forward the handshake
@@ -214,6 +128,24 @@ Notes for the implementation:
   `text/event-stream` isn't gzip'd so no buffering) — verify while in
   here.
 
+### Config schema growth
+
+The sites config works; these are the slots it still wants. They
+should be designed together so the schema grows coherently:
+
+- **Per-site rewrite rules.** Path-prefix rewrites with explicit choice
+  of 301 redirect, 302 redirect, or internal passthrough. Replaces the
+  Apache `RewriteRule` directives we've been ignoring. (Issue: #4)
+- **Security response headers.** HSTS and (opt-in) a small set of other
+  proxy-level security headers, per site. (Issue: #8)
+- **Per-Site error responses.** The global `ErrorCondition` → responder
+  layer exists; this is its config-schema surface (custom page,
+  redirect, per condition per site). (Issue: #5)
+- **Redirect-only sites.** A Site whose whole purpose is redirecting a
+  hostname elsewhere (`redirect_to`), no app — rebrands, domain
+  consolidation, typo-domains. Currently in brainstorming; decide the
+  shape alongside the above.
+
 ### Iteration 6+ — Operability and polish
 
 These items are filed and will be addressed in subsequent iterations as
@@ -221,12 +153,6 @@ they fit into related work, or when they become blockers:
 
 - **Pipeline unification** — collapse `startPlain` and `startWithFrontend`
   into one pipeline with multiple connectors. (Issue: #6)
-- **Per-Site error pages** — the global layer landed 2026-08-29:
-  failure conditions are a typed enum (`ErrorCondition`) with correct
-  statuses, each answered by an assignable responder
-  (`Modulo.errorHandling()`), defaulting to a clean self-contained
-  page. Remaining: per-Site assignment, which wants a config-schema
-  slot. (Issue: #5)
 - **Native access logging** — per-site logs in CLF or structured JSON,
   rotation, log shipping integration.
 - **Migrate WO apps to `X-Forwarded-Host`** so modulo can stop emulating
@@ -235,12 +161,28 @@ they fit into related work, or when they become blockers:
   `.woa/N/`-encoded instance numbers in URLs instead of always picking
   the first instance.
 - **Metrics endpoint and basic observability.** Health/readiness probes,
-  cert expiry surfaces, renewal failure alerts.
+  cert expiry surfaces, renewal failure alerts. (The overview page
+  covers the human-eyes case; this is the automation case.)
+- **ACME DNS-01** for wildcard certificates and where HTTP-01 is
+  impractical — the remaining piece of iteration 5.
 - **Ship the operational skeleton.** systemd unit templates, the
   `/opt/webobjects/{apps,conf,log}` layout, an install script — the
   knowledge a newcomer currently can't get without an existing
   installation to copy from. Surfaced by the first deployment done by
   someone other than the author. Interim step toward iteration 7.
+
+### Iteration 4 — `modulo-frontend` opens up for second consumers
+
+With the module separated and the config model stable, this iteration
+is about making the front-end genuinely consumable from outside
+modulo. Most likely consumer: `wo-adaptor-jetty`, giving single WO
+apps a real front door without needing modulo or Apache.
+
+The shape of *how* an embedded consumer configures the front-end is
+distinct from how modulo configures it — that's its own design
+discussion, taken up when the work starts.
+
+(Issues: undur/wo-adaptor-jetty#2)
 
 ### Iteration 7 — Single-service deployments: modulo-managed app lifecycle
 
@@ -296,10 +238,12 @@ small and focused.
   over HTTP/1.1. HTTP/2 multiplexing brings little benefit for a
   single-upstream proxy hop with keep-alive already enabled, and
   introduces operational complexity for marginal gain.
-- **No web admin UI in modulo itself.** Operators configure via files.
-  Long-term, JavaMonitor (which already owns app/instance lifecycle for
-  WO apps) is the natural place for a unified config UI; modulo would
-  expose an admin API that JavaMonitor drives.
+- **No config-editing web UI in modulo itself.** Operators configure
+  via files; the admin pages in modulo-runner are read-only status
+  views (plus the reload trigger), not a config editor. Long-term,
+  JavaMonitor (which already owns app/instance lifecycle for WO apps)
+  is the natural place for a unified config UI; modulo would expose an
+  admin API that JavaMonitor drives.
 - **HTTP/3 disabled in production.** The wiring is complete and tested
   end-to-end against a single-cert deployment, but Jetty's
   `QuicheServerConnector` selects one cert from the keystore at startup
