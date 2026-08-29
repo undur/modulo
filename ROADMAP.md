@@ -237,9 +237,15 @@ they fit into related work, or when they become blockers:
   first announcement-free response. Wonder's `route_id` cookie is
   deliberately unneeded (it exists for balancers that can't read WO's
   native pinning; modulo can). Remaining: health checks/failover,
-  draining on shutdown, strategies beyond round-robin — the
-  `x-webobjects-loadaverage` header (active session count) is the
-  ready-made input for least-loaded.
+  draining on shutdown, strategies beyond round-robin. On load
+  signals: WO's `x-webobjects-loadaverage` header is just the active
+  session count — a poor measure of real load this century (idle
+  sessions weigh nothing, sessionless/API traffic weighs plenty).
+  Modulo can do better without asking the app anything: it directly
+  observes per-instance in-flight request counts and response
+  latencies, so least-outstanding-requests (optionally
+  latency-weighted) is the natural strategy; the WO header at most a
+  tiebreaker for legacy sympathy.
 - **Metrics endpoint and basic observability.** Health/readiness probes,
   cert expiry surfaces, renewal failure alerts. (The overview page
   covers the human-eyes case; this is the automation case.)
