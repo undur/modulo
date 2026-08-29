@@ -104,25 +104,32 @@ class InstanceSelector {
 	private Instance roundRobin( final App application, final Set<Integer> excludedInstanceIds ) {
 		// New traffic avoids excluded (already-attempted) instances, dead
 		// instances (in their post-connect-failure cool-down) and instances
-		// refusing new sessions. Unregistered instances — wotaskd reports
-		// processes that are alive but no longer configured with negative
-		// instance numbers (-port) — are never balanced to, only reachable
-		// by explicit pin (mod_WebObjects' schedulability rule). If the
-		// filters leave nothing, serve from the non-excluded registered list
+		// refusing new sessions. Registered instances are preferred;
+		// unregistered ones — wotaskd reports processes that are alive but
+		// not in its configuration with negative instance numbers (-port) —
+		// serve as a last resort when no live registered instance exists.
+		// Some apps (JavaMonitor, hand-launched processes) live permanently
+		// outside wotaskd's management and only ever appear as unregistered
+		// instances — and unknown-instance entries are lifebeat-driven, so
+		// their presence in the config is proof of life, not a dying ghost.
+		// If the filters leave nothing, serve from the non-excluded list
 		// anyway — a reluctant instance beats an error page.
 		final List<Instance> notExcluded = application.instances().stream()
-				.filter( instance -> instance.id() >= 0 )
 				.filter( instance -> !excludedInstanceIds.contains( instance.id() ) )
 				.toList();
 
-		List<Instance> candidates = notExcluded.stream()
+		final List<Instance> willing = notExcluded.stream()
 				.filter( instance -> !isDead( application.name(), instance.id() ) )
 				.filter( instance -> !isRefusing( application.name(), instance.id() ) )
 				.toList();
 
-		if( candidates.isEmpty() ) {
-			candidates = notExcluded.isEmpty() ? application.instances() : notExcluded;
-		}
+		final List<Instance> willingRegistered = willing.stream()
+				.filter( instance -> instance.id() >= 0 )
+				.toList();
+
+		final List<Instance> candidates = !willingRegistered.isEmpty() ? willingRegistered
+				: !willing.isEmpty() ? willing
+						: !notExcluded.isEmpty() ? notExcluded : application.instances();
 
 		final int counter = _roundRobinCounters.computeIfAbsent( application.name(), name -> new AtomicInteger() ).getAndIncrement();
 		return candidates.get( Math.floorMod( counter, candidates.size() ) );

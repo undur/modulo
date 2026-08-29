@@ -820,21 +820,7 @@ public class Modulo {
 					requestedInstance = null;
 				}
 
-				// When only unregistered (winding-down) instances remain —
-				// wotaskd reports processes without configuration as negative
-				// ids — unpinned traffic gets an honest "unavailable" rather
-				// than whatever a dying ghost would answer. Explicit pins to
-				// unregistered instances still work; that's their purpose.
-				final boolean hasRegisteredInstances = instances.stream().anyMatch( instance -> instance.id() >= 0 );
-				if( requestedInstance == null && !hasRegisteredInstances ) {
-					throw new ProxyRoutingException( ErrorCondition.NO_INSTANCES, "Only unregistered (winding-down) instances remain for %s".formatted( application.name() ) );
-				}
-
 				final InstanceSelector.Selection selection = _instanceSelector.select( application, requestedInstance );
-
-				if( selection.fellBack() && selection.instance().id() < 0 ) {
-					throw new ProxyRoutingException( ErrorCondition.NO_INSTANCES, "Pinned instance %d of %s is gone and only unregistered instances remain".formatted( requestedInstance, application.name() ) );
-				}
 
 				if( selection.fellBack() ) {
 					logger.warn( "Instance {} of {} is no longer registered — rerouting to instance {}", requestedInstance, application.name(), selection.instance().id() );

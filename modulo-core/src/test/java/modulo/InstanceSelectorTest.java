@@ -149,19 +149,32 @@ class InstanceSelectorTest {
 
 	/**
 	 * wotaskd reports alive-but-unconfigured processes as negative instance
-	 * ids (-port). They are never balanced to — explicit pin only.
+	 * ids (-port). Registered instances are preferred, but unregistered ones
+	 * are a routable last resort — some apps (JavaMonitor, hand-launched
+	 * processes) are never in wotaskd's configuration at all, and their
+	 * unknown-instance entries are lifebeat-driven, i.e. provably alive.
 	 */
 	@Test
-	void unregisteredInstancesAreNeverBalancedTo() {
+	void unregisteredInstancesAreLastResort() {
 		final Instance ghost = new Instance( -2014, "host-a", 2014 );
 		final App mixed = new App( "Mixed", List.of( ONE, ghost ) );
 		final InstanceSelector selector = new InstanceSelector();
 
+		// while a live registered instance exists, only it is balanced to
 		final Set<Instance> picked = IntStream.range( 0, 6 ).mapToObj( i -> selector.select( mixed, null ).instance() ).collect( Collectors.toSet() );
 		assertEquals( Set.of( ONE ), picked );
 
-		// explicit pin reaches it
+		// explicit pin reaches the unregistered one
 		assertEquals( ghost, selector.select( mixed, -2014 ).instance() );
+
+		// an app with only unregistered instances (JavaMonitor's permanent state) is still served
+		final App unmanaged = new App( "JavaMonitor", List.of( ghost ) );
+		assertEquals( ghost, selector.select( unmanaged, null ).instance() );
+
+		// a dead registered instance yields to a live unregistered one
+		final InstanceSelector freshSelector = new InstanceSelector();
+		freshSelector.markDead( mixed.name(), 1, java.time.Duration.ofMinutes( 1 ) );
+		assertEquals( ghost, freshSelector.select( mixed, null ).instance() );
 	}
 
 	@Test
