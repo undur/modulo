@@ -5,6 +5,7 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
@@ -63,6 +64,7 @@ public class JettyFrontend {
 	private final int httpPort;
 	private final int httpsPort;
 	private final boolean http3Enabled;
+	private final CertStore http3CertStore;
 	private final Handler terminalHandler;
 	private final ErrorHandler errorHandler;
 
@@ -72,6 +74,13 @@ public class JettyFrontend {
 	/** hostname → Site, consulted per-request by the redirect handlers. Swapped atomically by {@link #updateSites} on config reload. */
 	private final AtomicReference<Map<String, Site>> sitesByHost = new AtomicReference<>();
 
+	/**
+	 * Hostnames the HTTP/3 certificate covers — Alt-Svc is only advertised
+	 * for these. Null means "advertise for all sites" (the single-cert
+	 * deployment case, where the shared keystore serves h3 too).
+	 */
+	private final AtomicReference<Set<String>> h3CoveredHosts = new AtomicReference<>();
+
 	public JettyFrontend(
 			final List<Site> sites,
 			final CertStore certStore,
@@ -79,7 +88,7 @@ public class JettyFrontend {
 			final int httpPort,
 			final int httpsPort,
 			final Handler terminalHandler ) {
-		this( sites, certStore, acmeWebroot, null, httpPort, httpsPort, false, terminalHandler, null );
+		this( sites, certStore, acmeWebroot, null, httpPort, httpsPort, false, null, null, terminalHandler, null );
 	}
 
 	/**
@@ -88,6 +97,12 @@ public class JettyFrontend {
 	 * @param acmeChallengeSource Optional in-memory challenge source (token →
 	 *            key authorization) for modulo's own ACME manager; consulted
 	 *            before the webroot. Null disables.
+	 * @param http3CertStore Optional dedicated keystore for the HTTP/3
+	 *            connector (the "fleet certificate" — Jetty's QUIC connector
+	 *            presents a single cert). Null makes h3 share the main
+	 *            keystore, whose first alias Jetty will pick.
+	 * @param h3CoveredHostnames Hostnames the h3 certificate covers; Alt-Svc
+	 *            is only advertised for these. Null advertises for all.
 	 * @param errorHandler Optional server-level error handler (rendering the
 	 *            embedder's error pages). Null keeps Jetty's default.
 	 */
@@ -99,6 +114,8 @@ public class JettyFrontend {
 			final int httpPort,
 			final int httpsPort,
 			final boolean http3Enabled,
+			final CertStore http3CertStore,
+			final Set<String> h3CoveredHostnames,
 			final Handler terminalHandler,
 			final ErrorHandler errorHandler ) {
 		this.sites = List.copyOf( sites );
@@ -108,8 +125,22 @@ public class JettyFrontend {
 		this.httpPort = httpPort;
 		this.httpsPort = httpsPort;
 		this.http3Enabled = http3Enabled;
+		this.http3CertStore = http3CertStore;
+		this.h3CoveredHosts.set( h3CoveredHostnames == null ? null : lowercased( h3CoveredHostnames ) );
 		this.terminalHandler = terminalHandler;
 		this.errorHandler = errorHandler;
+	}
+
+	/**
+	 * Swaps the set of hostnames Alt-Svc is advertised for — the config
+	 * reload path, when the fleet certificate's coverage changes.
+	 */
+	public void updateH3CoveredHosts( final Set<String> hostnames ) {
+		h3CoveredHosts.set( hostnames == null ? null : lowercased( hostnames ) );
+	}
+
+	private static Set<String> lowercased( final Set<String> hostnames ) {
+		return hostnames.stream().map( host -> host.toLowerCase() ).collect( java.util.stream.Collectors.toUnmodifiableSet() );
 	}
 
 	public Server start() throws Exception {
@@ -146,12 +177,42 @@ public class JettyFrontend {
 		if( http3Enabled ) {
 			http3PemWorkDir = Files.createTempDirectory( "modulo-h3-" );
 			logger.info( "HTTP/3 enabled — using Quiche PEM work dir {}", http3PemWorkDir );
-			server.addConnector( buildHttp3Connector( sslContextFactory, http3PemWorkDir ) );
+			server.addConnector( buildHttp3Connector( http3SslContextFactory( sslContextFactory ), http3PemWorkDir ) );
 		}
 
 		server.start();
 		certStore.startWatching();
+		if( http3CertStore != null ) {
+			http3CertStore.startWatching();
+		}
 		return server;
+	}
+
+	/**
+	 * @return The SslContextFactory for the HTTP/3 connector: one built
+	 *         around the dedicated fleet-cert keystore when present,
+	 *         otherwise the shared factory (single-cert deployments).
+	 */
+	private SslContextFactory.Server http3SslContextFactory( final SslContextFactory.Server sharedFactory ) {
+		if( http3CertStore == null ) {
+			return sharedFactory;
+		}
+
+		final SslContextFactory.Server h3Factory = new SslContextFactory.Server();
+		h3Factory.setKeyStore( http3CertStore.current() );
+		h3Factory.setKeyStorePassword( new String( http3CertStore.keyStorePassword() ) );
+
+		http3CertStore.onReload( reloadedStore -> {
+			try {
+				h3Factory.reload( factory -> factory.setKeyStore( reloadedStore ) );
+				logger.info( "HTTP/3 SslContextFactory reloaded with refreshed fleet certificate" );
+			}
+			catch( final Exception e ) {
+				logger.warn( "HTTP/3 SslContextFactory reload failed: {}", e.toString() );
+			}
+		} );
+
+		return h3Factory;
 	}
 
 	/**
@@ -165,6 +226,9 @@ public class JettyFrontend {
 
 	public void stop() throws Exception {
 		certStore.stopWatching();
+		if( http3CertStore != null ) {
+			http3CertStore.stopWatching();
+		}
 		if( server != null ) {
 			server.stop();
 		}
@@ -263,7 +327,7 @@ public class JettyFrontend {
 		// then the proxy itself.
 		Handler tail = new Cookie2ScrubHandler( buildCompressionHandler( terminalHandler ) );
 		if( http3Enabled ) {
-			tail = new AltSvcHandler( httpsPort, tail );
+			tail = new AltSvcHandler( httpsPort, h3CoveredHosts::get, tail );
 		}
 		return new AcmeChallengeHandler( acmeWebroot, acmeChallengeSource,
 				new HttpsRedirectHandler( sitesByHost, httpsPort,
@@ -446,25 +510,34 @@ public class JettyFrontend {
 
 	/**
 	 * Adds an {@code Alt-Svc} response header on secure (HTTPS) responses so
-	 * capable clients know they may upgrade to HTTP/3. {@code ma=86400} caches
-	 * the advertisement for a day. Only added on H/2 or H/1.1 over TLS — for
-	 * H/3 traffic it would be a no-op (already using H/3) but harmless.
+	 * capable clients know they may upgrade to HTTP/3 — but only for
+	 * hostnames the h3 certificate actually covers (a null covered-set means
+	 * all). {@code ma=86400} caches the advertisement for a day. Only added
+	 * on H/2 or H/1.1 over TLS — for H/3 traffic it would be a no-op
+	 * (already using H/3) but harmless.
 	 */
 	private static class AltSvcHandler extends Handler.Wrapper {
 
 		private final String altSvcValue;
+		private final Supplier<Set<String>> coveredHosts;
 
-		AltSvcHandler( final int httpsPort, final Handler next ) {
+		AltSvcHandler( final int httpsPort, final Supplier<Set<String>> coveredHosts, final Handler next ) {
 			super( next );
 			this.altSvcValue = "h3=\":" + httpsPort + "\"; ma=86400";
+			this.coveredHosts = coveredHosts;
 		}
 
 		@Override
 		public boolean handle( final Request request, final Response response, final Callback callback ) throws Exception {
-			if( request.isSecure() ) {
+			if( request.isSecure() && isCovered( hostOf( request ) ) ) {
 				response.getHeaders().put( "alt-svc", altSvcValue );
 			}
 			return super.handle( request, response, callback );
+		}
+
+		private boolean isCovered( final String host ) {
+			final Set<String> covered = coveredHosts.get();
+			return covered == null || (host != null && covered.contains( host ));
 		}
 	}
 

@@ -8,6 +8,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.Executors;
@@ -110,6 +111,14 @@ public class Modulo {
 	private CertStore _certStore;
 	private JettyFrontend _frontend;
 	private AcmeManager _acmeManager;
+
+	/**
+	 * The keystore feeding the HTTP/3 connector its single "fleet"
+	 * certificate — one cert covering every ACME-managed hostname,
+	 * sidestepping Jetty's one-cert-per-QUIC-connector limitation.
+	 * Null unless http3 is enabled and ACME sites exist.
+	 */
+	private CertStore _h3FleetStore;
 
 	/**
 	 * Construct a new instance running the plain reverse-proxy connector on
@@ -249,16 +258,29 @@ public class Modulo {
 
 		logUnmappedDomains( sites );
 
+		// HTTP/3's fleet certificate: Jetty's QUIC connector can present only
+		// one certificate, so when h3 is enabled, one extra ACME cert covering
+		// every ACME-managed hostname is maintained alongside the per-site
+		// certs and fed to the QUIC connector from its own keystore.
+		final Site fleetSite = (config.http3() && !sitesConfig.acmeManagedSites().isEmpty()) ? h3FleetSite( sitesConfig ) : null;
+
 		// The ACME manager always exists when the front-end runs (a config
 		// reload may introduce the first ACME site later). ACME-managed sites
 		// without a cert on disk get a self-signed placeholder before the
 		// keystore is built, so the TLS connector can start immediately; real
-		// certs are ordered in the background below.
-		_acmeManager = new AcmeManager( sitesConfig.acme(), sitesConfig.acmeManagedSites() );
+		// certs are ordered in the background below. The fleet "site" rides
+		// along as one more managed entry — placeholder, issuance and
+		// SAN-coverage renewal all apply to it unchanged.
+		_acmeManager = new AcmeManager( sitesConfig.acme(), managedSitesPlusFleet( sitesConfig, fleetSite ) );
 		_acmeManager.ensurePlaceholders();
 
 		_certStore = new CertStore( sites );
 		_certStore.load();
+
+		if( fleetSite != null ) {
+			_h3FleetStore = new CertStore( List.of( fleetSite ) );
+			_h3FleetStore.load();
+		}
 
 		_frontend = new JettyFrontend(
 				sites,
@@ -268,12 +290,42 @@ public class Modulo {
 				config.httpPort(),
 				config.httpsPort(),
 				config.http3(),
+				_h3FleetStore,
+				fleetSite == null ? null : Set.copyOf( fleetSite.allHostnames() ),
 				new ModuloProxy( rewriteURIFunction(), _errorHandling ),
 				new ModuloProxy.ModuloErrorHandler( _errorHandling ) );
 		_frontend.start();
 
 		// Only after the server is up — HTTP-01 needs the HTTP connector answering
-		_acmeManager.start( _certStore::reloadNow );
+		_acmeManager.start( () -> {
+			_certStore.reloadNow();
+			if( _h3FleetStore != null ) {
+				_h3FleetStore.reloadNow();
+			}
+		} );
+	}
+
+	/**
+	 * @return The synthetic Site whose certificate covers every ACME-managed
+	 *         hostname — the HTTP/3 fleet certificate. Its PEMs live under
+	 *         {@code <acme storage>/h3-fleet/}.
+	 */
+	private static Site h3FleetSite( final SitesConfig sitesConfig ) {
+		final List<String> hostnames = sitesConfig.acmeManagedSites().stream()
+				.flatMap( site -> site.allHostnames().stream() )
+				.distinct()
+				.toList();
+		final Path fleetDir = sitesConfig.acme().storageDir().resolve( "h3-fleet" );
+		return new Site( hostnames.getFirst(), hostnames.subList( 1, hostnames.size() ), fleetDir.resolve( "cert.pem" ), fleetDir.resolve( "key.pem" ), true, true );
+	}
+
+	private static List<Site> managedSitesPlusFleet( final SitesConfig sitesConfig, final Site fleetSite ) {
+		if( fleetSite == null ) {
+			return sitesConfig.acmeManagedSites();
+		}
+		final List<Site> all = new ArrayList<>( sitesConfig.acmeManagedSites() );
+		all.add( fleetSite );
+		return all;
 	}
 
 	/**
@@ -300,11 +352,22 @@ public class Modulo {
 			throw new IllegalStateException( "The sites config contains no sites — refusing to reload the front-end down to nothing" );
 		}
 
-		_acmeManager.update( newConfig.acme(), newConfig.acmeManagedSites() );
+		final Site newFleetSite = (_h3FleetStore != null && !newConfig.acmeManagedSites().isEmpty()) ? h3FleetSite( newConfig ) : null;
+
+		_acmeManager.update( newConfig.acme(), managedSitesPlusFleet( newConfig, newFleetSite ) );
 		_acmeManager.ensurePlaceholders();
 
 		_certStore.updateSites( sites ); // rebuilds the keystore; throws (changing nothing) if no certs load
 		_frontend.updateSites( sites );
+
+		if( newFleetSite != null ) {
+			_h3FleetStore.updateSites( List.of( newFleetSite ) );
+			_frontend.updateH3CoveredHosts( Set.copyOf( newFleetSite.allHostnames() ) );
+		}
+		else if( _h3FleetStore != null ) {
+			logger.warn( "HTTP/3 is enabled but the reloaded config has no ACME-managed sites — the fleet certificate is frozen at its current coverage" );
+		}
+
 		_sitesConfig = newConfig;
 		_domainToAppMap = newConfig.domainToAppMap();
 
