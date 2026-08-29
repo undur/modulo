@@ -16,6 +16,8 @@ import org.slf4j.LoggerFactory;
 import modulo.error.ErrorCondition;
 import modulo.error.ErrorHandling;
 import modulo.error.ProxyRoutingException;
+import modulo.frontend.events.Event;
+import modulo.frontend.events.EventLog;
 
 /**
  * Subclass of Jetty's proxy handler, allows us to make required modifications to the proxied request before forwarding it to the instance
@@ -28,10 +30,12 @@ class ModuloProxy extends ProxyHandler.Reverse {
 	static final String ERROR_CONDITION_ATTRIBUTE = "modulo.error-condition";
 
 	private final ErrorHandling _errorHandling;
+	private final EventLog _eventLog;
 
-	public ModuloProxy( Function<Request, HttpURI> httpURIRewriter, ErrorHandling errorHandling ) {
+	public ModuloProxy( Function<Request, HttpURI> httpURIRewriter, ErrorHandling errorHandling, EventLog eventLog ) {
 		super( httpURIRewriter );
 		_errorHandling = errorHandling;
+		_eventLog = eventLog;
 	}
 
 	/**
@@ -46,6 +50,7 @@ class ModuloProxy extends ProxyHandler.Reverse {
 		}
 		catch( final ProxyRoutingException e ) {
 			logger.info( "{} for {}{}: {}", e.condition(), clientToProxyRequest.getHttpURI().getHost(), clientToProxyRequest.getHttpURI().getPath(), e.getMessage() );
+			_eventLog.add( Event.Severity.WARN, e.condition().name(), clientToProxyRequest.getHttpURI().getHost(), null, e.getMessage() );
 			_errorHandling.respond( e.condition(), clientToProxyRequest, proxyToClientResponse, proxyToClientCallback );
 			return true;
 		}
@@ -118,6 +123,7 @@ class ModuloProxy extends ProxyHandler.Reverse {
 	protected void onServerToProxyResponseFailure( Request clientToProxyRequest, org.eclipse.jetty.client.Request proxyToServerRequest, Response serverToProxyResponse, org.eclipse.jetty.server.Response proxyToClientResponse, Callback proxyToClientCallback, Throwable failure ) {
 		final ErrorCondition condition = failure instanceof TimeoutException ? ErrorCondition.UPSTREAM_TIMEOUT : ErrorCondition.UPSTREAM_UNREACHABLE;
 		logger.warn( "{} proxying {}{} -> {}: {}", condition, clientToProxyRequest.getHttpURI().getHost(), clientToProxyRequest.getHttpURI().getPath(), proxyToServerRequest.getURI(), failure.toString() );
+		_eventLog.add( Event.Severity.ERROR, condition.name(), clientToProxyRequest.getHttpURI().getHost(), null, "upstream %s: %s".formatted( proxyToServerRequest.getURI(), failure.toString() ) );
 		clientToProxyRequest.setAttribute( ERROR_CONDITION_ATTRIBUTE, condition );
 		super.onServerToProxyResponseFailure( clientToProxyRequest, proxyToServerRequest, serverToProxyResponse, proxyToClientResponse, proxyToClientCallback, failure );
 	}

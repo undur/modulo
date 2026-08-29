@@ -67,9 +67,14 @@ public class JettyFrontend {
 	private final CertStore http3CertStore;
 	private final Handler terminalHandler;
 	private final ErrorHandler errorHandler;
+	private final Path accessLogDir;
+
+	/** Days of per-site access logs to retain. FIXME: Make configurable when the logging config surface grows // 2026-08-29 */
+	private static final int ACCESS_LOG_RETAIN_DAYS = 90;
 
 	private Server server;
 	private Path http3PemWorkDir;
+	private SiteAccessLog accessLog;
 
 	/** hostname → Site, consulted per-request by the redirect handlers. Swapped atomically by {@link #updateSites} on config reload. */
 	private final AtomicReference<Map<String, Site>> sitesByHost = new AtomicReference<>();
@@ -88,7 +93,7 @@ public class JettyFrontend {
 			final int httpPort,
 			final int httpsPort,
 			final Handler terminalHandler ) {
-		this( sites, certStore, acmeWebroot, null, httpPort, httpsPort, false, null, null, terminalHandler, null );
+		this( sites, certStore, acmeWebroot, null, httpPort, httpsPort, false, null, null, null, terminalHandler, null );
 	}
 
 	/**
@@ -116,6 +121,7 @@ public class JettyFrontend {
 			final boolean http3Enabled,
 			final CertStore http3CertStore,
 			final Set<String> h3CoveredHostnames,
+			final Path accessLogDir,
 			final Handler terminalHandler,
 			final ErrorHandler errorHandler ) {
 		this.sites = List.copyOf( sites );
@@ -127,6 +133,7 @@ public class JettyFrontend {
 		this.http3Enabled = http3Enabled;
 		this.http3CertStore = http3CertStore;
 		this.h3CoveredHosts.set( h3CoveredHostnames == null ? null : lowercased( h3CoveredHostnames ) );
+		this.accessLogDir = accessLogDir;
 		this.terminalHandler = terminalHandler;
 		this.errorHandler = errorHandler;
 	}
@@ -166,6 +173,12 @@ public class JettyFrontend {
 		sitesByHost.set( buildHostMap( sites ) );
 		final Handler chain = buildHandlerChain( sitesByHost::get );
 		server.setHandler( chain );
+
+		if( accessLogDir != null ) {
+			accessLog = new SiteAccessLog( accessLogDir, ACCESS_LOG_RETAIN_DAYS, sitesByHost::get );
+			server.setRequestLog( accessLog );
+			logger.info( "Per-site access logs in {} (retaining {} days)", accessLogDir, ACCESS_LOG_RETAIN_DAYS );
+		}
 
 		if( errorHandler != null ) {
 			server.setErrorHandler( errorHandler );
@@ -228,6 +241,9 @@ public class JettyFrontend {
 		certStore.stopWatching();
 		if( http3CertStore != null ) {
 			http3CertStore.stopWatching();
+		}
+		if( accessLog != null ) {
+			accessLog.close();
 		}
 		if( server != null ) {
 			server.stop();

@@ -193,8 +193,15 @@ they fit into related work, or when they become blockers:
 
 - **Pipeline unification** — collapse `startPlain` and `startWithFrontend`
   into one pipeline with multiple connectors. (Issue: #6)
-- **Native access logging** — per-site logs in CLF or structured JSON,
-  rotation, log shipping integration.
+- **Statistics / basic profiling pages.** Global and per-app/site views
+  for health checks and spike detection — the display-side sibling of
+  the event log (logging and event tracking being flip sides of the
+  same coin). Not access-log analytics; think request counters, status
+  distributions, recent-window rates. Long-term, prefer plugging into
+  standard continuous-profiling streams (JFR) over inventing our own
+  protocols. Event scoping already anticipates this: events carry
+  optional site/app coordinates (instance scope reserved for the
+  multi-instance work).
 - **Migrate WO apps to `X-Forwarded-Host`** so modulo can stop emulating
   Apache's `ProxyPreserveHost On`. (Issue: #7)
 - **Multi-instance app routing.** Honor `woinst` cookie and

@@ -211,7 +211,8 @@ the front-end simply doesn't start.
 | `modulo.frontend.http-port` | `80` | Plain-HTTP connector (redirects + ACME challenges). |
 | `modulo.frontend.https-port` | `443` | TLS connector. |
 | `modulo.frontend.http3` | `false` | HTTP/3 (QUIC). Leave off for multi-site deployments — see "Deliberate non-goals" in the roadmap. |
-| `modulo.admin-password` | — | Guards the `/overview` configuration page (HTTP Basic, any username). When set, auth is always required; when unset, the page is open in development mode and disabled in production. |
+| `modulo.frontend.access-log-dir` | — | Directory for per-site access logs: one file per Site (aliases fold into the canonical hostname's file, unmatched hosts go to `_unmatched`), combined format + request duration, daily rollover, 90-day retention. Unset disables. |
+| `modulo.admin-password` | — | Guards the admin pages (HTTP Basic, any username). When set, auth is always required; when unset, the pages are open in development mode and disabled in production. |
 | `modulo.frontend.acme-webroot` | — | *Transitional.* Webroot where an external certbot writes HTTP-01 tokens, for deployments mid-migration to native ACME. |
 
 ### Layer 3: the sites config

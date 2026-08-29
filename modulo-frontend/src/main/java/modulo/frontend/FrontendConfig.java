@@ -21,6 +21,9 @@ import java.nio.file.Path;
  *            external ACME client (certbot) — for deployments mid-migration
  *            to modulo's native ACME. {@code null} disables challenge
  *            passthrough.
+ * @param accessLogDir Optional directory for per-site access logs (one file
+ *            per Site, daily rollover, bounded retention). {@code null}
+ *            disables access logging.
  * @param http3 When true, opens an additional UDP connector on {@code httpsPort}
  *            speaking HTTP/3 (QUIC), and adds an {@code Alt-Svc} advertisement
  *            on HTTP/2 responses so capable clients try to upgrade. Requires
@@ -32,5 +35,6 @@ public record FrontendConfig(
 		int httpPort,
 		int httpsPort,
 		Path acmeWebroot,
+		Path accessLogDir,
 		boolean http3 ) {
 }

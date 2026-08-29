@@ -1,0 +1,40 @@
+<wo:MDLook>
+	<div class="row">
+		<div class="col-12">
+			<div class="card mb-3">
+				<div class="card-header">
+					<h3>Recent events</h3>
+				</div>
+				<wo:if condition="$hasEvents" negate="true">
+					<div class="card-body">Nothing noteworthy has happened since startup — which is exactly how we like it.</div>
+				</wo:if>
+				<wo:if condition="$hasEvents">
+					<table class="table table-sm mb-0">
+						<thead>
+							<tr>
+								<th>Time (UTC)</th>
+								<th>Severity</th>
+								<th>Kind</th>
+								<th>Scope</th>
+								<th>Message</th>
+							</tr>
+						</thead>
+						<wo:repetition list="$events" item="$currentEvent">
+							<tr>
+								<td class="text-nowrap"><wo:str value="$currentEvent.time" /></td>
+								<td>
+									<wo:if condition="$currentEvent.isError"><span class="badge bg-red-lt"><wo:str value="$currentEvent.severity" /></span></wo:if>
+									<wo:if condition="$currentEvent.isWarn"><span class="badge bg-orange-lt"><wo:str value="$currentEvent.severity" /></span></wo:if>
+									<wo:if condition="$currentEvent.isError" negate="true"><wo:if condition="$currentEvent.isWarn" negate="true"><span class="badge bg-blue-lt"><wo:str value="$currentEvent.severity" /></span></wo:if></wo:if>
+								</td>
+								<td><wo:str value="$currentEvent.kind" /></td>
+								<td><wo:str value="$currentEvent.scope" /></td>
+								<td><wo:str value="$currentEvent.message" /></td>
+							</tr>
+						</wo:repetition>
+					</table>
+				</wo:if>
+			</div>
+		</div>
+	</div>
+</wo:MDLook>

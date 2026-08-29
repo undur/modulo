@@ -91,12 +91,14 @@ public class Application extends NGApplication {
 		final int httpPort = parsePort( config, "modulo.frontend.http-port", 80 );
 		final int httpsPort = parsePort( config, "modulo.frontend.https-port", 443 );
 		final String acmeWebroot = config.getProperty( "modulo.frontend.acme-webroot" );
+		final String accessLogDir = config.getProperty( "modulo.frontend.access-log-dir" );
 		final boolean http3 = Boolean.parseBoolean( config.getProperty( "modulo.frontend.http3", "false" ) );
 		return new FrontendConfig(
 				Path.of( sitesFile ),
 				httpPort,
 				httpsPort,
 				acmeWebroot == null ? null : Path.of( acmeWebroot ),
+				accessLogDir == null ? null : Path.of( accessLogDir ),
 				http3 );
 	}
 
@@ -137,6 +139,7 @@ public class Application extends NGApplication {
 				.map( "/WOAdaptorInfo", request -> new NGResponse( _modulo.adaptorConfig().toString(), 200 ) )
 				.map( "/overview", MDOverviewPage.class )
 				.map( "/adaptor", MDAdaptorPage.class )
+				.map( "/events", MDEventsPage.class )
 				.map( "/reload", this::reloadAction )
 				.map( "/", MDStartPage.class );
 	}

@@ -34,6 +34,8 @@ import org.shredzone.acme4j.util.KeyPairUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import modulo.frontend.events.Event;
+import modulo.frontend.events.EventLog;
 import modulo.frontend.site.Site;
 
 /**
@@ -96,9 +98,23 @@ public class AcmeManager {
 	private Runnable afterCertsChanged;
 	private Timer timer;
 
+	/** Where noteworthy occurrences (certs obtained, issuance failures) get registered for the admin UI. Null disables. */
+	private final EventLog eventLog;
+
 	public AcmeManager( final AcmeSettings settings, final List<Site> managedSites ) {
+		this( settings, managedSites, null );
+	}
+
+	public AcmeManager( final AcmeSettings settings, final List<Site> managedSites, final EventLog eventLog ) {
 		this.settings = settings;
 		this.managedSites = List.copyOf( managedSites );
+		this.eventLog = eventLog;
+	}
+
+	private void event( final Event.Severity severity, final String kind, final String site, final String message ) {
+		if( eventLog != null ) {
+			eventLog.add( severity, kind, site, null, message );
+		}
 	}
 
 	/**
@@ -215,6 +231,7 @@ public class AcmeManager {
 			}
 			catch( final Exception e ) {
 				logger.error( "ACME issuance failed for site {} — will retry within {}: {}", site.primaryHostname(), CHECK_INTERVAL, e.toString() );
+				event( Event.Severity.ERROR, "acme-issuance-failed", site.primaryHostname(), e.getMessage() );
 			}
 		}
 
@@ -364,5 +381,6 @@ public class AcmeManager {
 		PemFiles.writeAtomic( site.certPath(), chain.toString() );
 
 		logger.info( "Obtained certificate for {} — valid until {}", site.primaryHostname(), certificate.getCertificate().getNotAfter() );
+		event( Event.Severity.INFO, "certificate-obtained", site.primaryHostname(), "Valid until " + certificate.getCertificate().getNotAfter() );
 	}
 }

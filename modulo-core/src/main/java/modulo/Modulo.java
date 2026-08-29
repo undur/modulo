@@ -32,6 +32,8 @@ import modulo.error.ErrorHandling;
 import modulo.error.ProxyRoutingException;
 import modulo.frontend.FrontendConfig;
 import modulo.frontend.JettyFrontend;
+import modulo.frontend.events.Event;
+import modulo.frontend.events.EventLog;
 import modulo.frontend.site.Site;
 import modulo.frontend.tls.CertStore;
 import modulo.frontend.tls.acme.AcmeManager;
@@ -106,6 +108,12 @@ public class Modulo {
 	 * conditions via {@link #errorHandling()}.
 	 */
 	private final ErrorHandling _errorHandling = ErrorHandling.withDefaults();
+
+	/**
+	 * Recent noteworthy occurrences (proxy failures, certs obtained/failed,
+	 * config reloads), buffered for inspection through the admin UI.
+	 */
+	private final EventLog _events = new EventLog( 1000 );
 
 	/** The front-end's moving parts, kept for config reload. All null in plain-proxy mode. */
 	private CertStore _certStore;
@@ -234,7 +242,7 @@ public class Modulo {
 		final ServerConnector connector = new ServerConnector( server, connectionFactory );
 		connector.setPort( _port );
 		server.addConnector( connector );
-		server.setHandler( new ModuloProxy( rewriteURIFunction(), _errorHandling ) );
+		server.setHandler( new ModuloProxy( rewriteURIFunction(), _errorHandling, _events ) );
 		server.setErrorHandler( new ModuloProxy.ModuloErrorHandler( _errorHandling ) );
 
 		server.start();
@@ -271,7 +279,7 @@ public class Modulo {
 		// certs are ordered in the background below. The fleet "site" rides
 		// along as one more managed entry — placeholder, issuance and
 		// SAN-coverage renewal all apply to it unchanged.
-		_acmeManager = new AcmeManager( sitesConfig.acme(), managedSitesPlusFleet( sitesConfig, fleetSite ) );
+		_acmeManager = new AcmeManager( sitesConfig.acme(), managedSitesPlusFleet( sitesConfig, fleetSite ), _events );
 		_acmeManager.ensurePlaceholders();
 
 		_certStore = new CertStore( sites );
@@ -292,7 +300,8 @@ public class Modulo {
 				config.http3(),
 				_h3FleetStore,
 				fleetSite == null ? null : Set.copyOf( fleetSite.allHostnames() ),
-				new ModuloProxy( rewriteURIFunction(), _errorHandling ),
+				config.accessLogDir(),
+				new ModuloProxy( rewriteURIFunction(), _errorHandling, _events ),
 				new ModuloProxy.ModuloErrorHandler( _errorHandling ) );
 		_frontend.start();
 
@@ -341,6 +350,16 @@ public class Modulo {
 	 * @return A short human-readable summary of what is now live
 	 */
 	public synchronized String reloadSitesConfig() throws Exception {
+		try {
+			return doReloadSitesConfig();
+		}
+		catch( final Exception e ) {
+			_events.add( Event.Severity.ERROR, "config-reload-rejected", null, null, e.getMessage() );
+			throw e;
+		}
+	}
+
+	private String doReloadSitesConfig() throws Exception {
 		if( _frontend == null ) {
 			throw new IllegalStateException( "The front-end is not running — nothing to reload (plain-proxy mode, or front-end startup failed)" );
 		}
@@ -376,6 +395,7 @@ public class Modulo {
 
 		final String summary = "Reloaded sites config: %d site(s), %d ACME-managed".formatted( sites.size(), newConfig.acmeManagedSites().size() );
 		logger.info( summary );
+		_events.add( Event.Severity.INFO, "config-reloaded", null, null, summary );
 		return summary;
 	}
 
@@ -468,6 +488,13 @@ public class Modulo {
 		return _errorHandling;
 	}
 
+	/**
+	 * @return The buffer of recent noteworthy events, for the admin UI
+	 */
+	public EventLog events() {
+		return _events;
+	}
+
 	private void startAdaptorConfigAutoReloader() {
 		final TimerTask adaptorConfigReloadTask = new TimerTask() {
 			@Override
@@ -539,7 +566,8 @@ public class Modulo {
 					.scheme( HttpScheme.HTTP )
 					.port( port );
 
-			logger.info( "Forwarding %s -> %s".formatted( originalURI, targetURI ) );
+			// Per-request logging belongs in the access log — this is debug-only tracing
+			logger.debug( "Forwarding {} -> {}", originalURI, targetURI );
 
 			return targetURI;
 		};
