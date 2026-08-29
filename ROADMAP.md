@@ -225,9 +225,14 @@ they fit into related work, or when they become blockers:
   multi-instance work).
 - **Migrate WO apps to `X-Forwarded-Host`** so modulo can stop emulating
   Apache's `ProxyPreserveHost On`. (Issue: #7)
-- **Multi-instance app routing.** Honor `woinst` cookie and
-  `.woa/N/`-encoded instance numbers in URLs instead of always picking
-  the first instance.
+- **Multi-instance app routing** — *core landed 2026-08-29, verified
+  live against a six-instance app*: `.woa/N/` URL pins, `woinst`
+  cookie stickiness, round-robin for unpinned requests, and
+  fall-back-with-event when a pinned instance is gone. Wonder's
+  `route_id` cookie is deliberately unneeded (it exists for balancers
+  that can't read WO's native pinning; modulo can). Remaining, per the
+  brainstorming notes: refusing-new-sessions handling, health
+  checks/failover, draining, pluggable strategies.
 - **Metrics endpoint and basic observability.** Health/readiness probes,
   cert expiry surfaces, renewal failure alerts. (The overview page
   covers the human-eyes case; this is the automation case.)
