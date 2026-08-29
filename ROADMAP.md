@@ -236,7 +236,14 @@ they fit into related work, or when they become blockers:
   pins rerouted past the WO rebalance-redirect, state cleared on the
   first announcement-free response. Wonder's `route_id` cookie is
   deliberately unneeded (it exists for balancers that can't read WO's
-  native pinning; modulo can). Failover landed 2026-08-29 (from
+  native pinning; modulo can). ng-objects affinity (decided
+  2026-08-29): ng apps are *deliberately instance-ignorant* — the
+  proxy attaches/reads the affinity cookie on `ngsid` sessions
+  entirely on its own, so ng-appserver carries no instance protocol
+  at all. Optional future enrichment if ng apps ever want to know
+  their instance (logging, diagnostics): an `x-modulo-instance`
+  request header. For graceful-bounce parity, ng could simply adopt
+  the existing refusal response headers modulo already understands. Failover landed 2026-08-29 (from
   the mod_WebObjects source review): dead cool-down (30s) on connect
   failure with instant proof-of-life recovery, body-less requests
   failed over across not-yet-attempted instances until exhaustion,
