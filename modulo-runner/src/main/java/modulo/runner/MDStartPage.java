@@ -89,7 +89,7 @@ public class MDStartPage extends NGComponent {
 		rows.add( new SettingRow( "Proxy", "Plain proxy port", String.valueOf( Config.MODULO_PROXY_PORT ), "-Dmodulo.proxy-port", "yes" ) );
 		rows.add( new SettingRow( "Proxy", "Adaptor URL prefix", Modulo.ADAPTOR_URL, "hardcoded", "not yet" ) );
 		rows.add( new SettingRow( "Proxy", "Adaptor config reload interval", humanDuration( Modulo.DEFAULT_CONFIG_RELOAD_DURATION ), "hardcoded", "not yet" ) );
-		rows.add( new SettingRow( "Proxy", "Instance selection", "first instance", "hardcoded", "not yet (multi-instance routing planned)" ) );
+		rows.add( new SettingRow( "Proxy", "Instance selection", "URL pin → woinst cookie → round-robin", "hardcoded behavior", "strategy not yet (round-robin only)" ) );
 		rows.add( new SettingRow( "Proxy", "Worker threads, max (plain)", String.valueOf( Modulo.PLAIN_PROXY_MAX_THREADS ), "hardcoded", "not yet" ) );
 		if( proxyClient != null ) {
 			rows.add( new SettingRow( "Proxy", "Upstream connect timeout", humanDuration( Duration.ofMillis( proxyClient.getConnectTimeout() ) ), "Jetty default", "not yet" ) );
