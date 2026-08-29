@@ -24,21 +24,24 @@
 				<table class="table table-sm mb-0">
 					<thead>
 						<tr>
-							<th>Group</th>
 							<th>Setting</th>
 							<th>Value</th>
 							<th>Source</th>
 							<th>Configurable</th>
 						</tr>
 					</thead>
-					<wo:repetition list="$settings" item="$currentSetting">
-						<tr>
-							<td class="text-secondary"><wo:str value="$currentSetting.group" /></td>
-							<td><wo:str value="$currentSetting.name" /></td>
-							<td><code><wo:str value="$currentSetting.value" /></code></td>
-							<td class="text-secondary"><wo:str value="$currentSetting.source" /></td>
-							<td><wo:str value="$currentSetting.configurable" /></td>
+					<wo:repetition list="$settingGroups" item="$currentGroup">
+						<tr class="table-active">
+							<th colspan="4"><wo:str value="$currentGroup.name" /></th>
 						</tr>
+						<wo:repetition list="$currentGroup.rows" item="$currentSetting">
+							<tr>
+								<td><wo:str value="$currentSetting.name" /></td>
+								<td><code><wo:str value="$currentSetting.value" /></code></td>
+								<td class="text-secondary"><wo:str value="$currentSetting.source" /></td>
+								<td><wo:str value="$currentSetting.configurable" /></td>
+							</tr>
+						</wo:repetition>
 					</wo:repetition>
 				</table>
 			</div>

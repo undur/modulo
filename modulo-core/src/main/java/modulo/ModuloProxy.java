@@ -1,10 +1,15 @@
 package modulo;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 
 import org.eclipse.jetty.client.Response;
+import org.eclipse.jetty.http.HttpField;
+import org.eclipse.jetty.http.HttpFields;
+import org.eclipse.jetty.http.HttpHeader;
 import org.eclipse.jetty.http.HttpURI;
 import org.eclipse.jetty.proxy.ProxyHandler;
 import org.eclipse.jetty.server.Request;
@@ -145,6 +150,89 @@ class ModuloProxy extends ProxyHandler.Reverse {
 		// CHECKME: This really just corrects a mistake made by ourselves so this feels hacky. Ideally, we'd instruct Jetty to never modify the user-agent header in the first place // Hugi 2025-05-07
 		final String clientUserAgent = clientToProxyRequest.getHeaders().get( "user-agent" );
 		proxyToServerRequest.headers( headers -> headers.put( "user-agent", clientUserAgent ) );
+	}
+
+	/**
+	 * Adjusts session-stickiness cookies on the way out: apps behind modulo
+	 * are never told their instance number (mod_WebObjects transported it in
+	 * adaptor URLs, which the clean-URL world doesn't have), so they emit
+	 * {@code woinst=-1} — useless for stickiness. Modulo knows exactly which
+	 * instance served the request, so it corrects the cookie itself: a
+	 * {@code woinst} of -1 (or junk) is rewritten to the truth, and a
+	 * session-creating response ({@code wosid} cookie) missing {@code woinst}
+	 * entirely gets one added. A real instance number from the app is left
+	 * alone. Zero app-side changes required.
+	 */
+	@Override
+	protected org.eclipse.jetty.client.Response.CompleteListener newServerToProxyResponseListener( Request clientToProxyRequest, org.eclipse.jetty.client.Request proxyToServerRequest, org.eclipse.jetty.server.Response proxyToClientResponse, Callback proxyToClientCallback ) {
+		return new ProxyResponseListener( clientToProxyRequest, proxyToServerRequest, proxyToClientResponse, proxyToClientCallback ) {
+			@Override
+			public void onHeaders( final org.eclipse.jetty.client.Response serverToProxyResponse ) {
+				super.onHeaders( serverToProxyResponse );
+				ensureTruthfulWoinst( (Integer)clientToProxyRequest.getAttribute( TARGET_INSTANCE_ATTRIBUTE ), proxyToClientResponse.getHeaders() );
+			}
+		};
+	}
+
+	static void ensureTruthfulWoinst( final Integer instanceId, final HttpFields.Mutable headers ) {
+		if( instanceId == null ) {
+			return;
+		}
+
+		final List<String> cookies = new ArrayList<>();
+		boolean sessionPresent = false;
+		boolean woinstPresent = false;
+		boolean adjusted = false;
+
+		for( final HttpField field : headers ) {
+			if( field.getHeader() != HttpHeader.SET_COOKIE ) {
+				continue;
+			}
+			String value = field.getValue();
+			if( value.startsWith( "woinst=" ) ) {
+				woinstPresent = true;
+				final String corrected = correctedWoinst( value, instanceId );
+				adjusted |= !corrected.equals( value );
+				value = corrected;
+			}
+			else if( value.startsWith( "wosid=" ) ) {
+				sessionPresent = true;
+			}
+			cookies.add( value );
+		}
+
+		if( !woinstPresent && sessionPresent ) {
+			cookies.add( "woinst=%d; path=/".formatted( instanceId ) );
+			adjusted = true;
+		}
+
+		if( adjusted ) {
+			headers.remove( HttpHeader.SET_COOKIE );
+			cookies.forEach( cookie -> headers.add( HttpHeader.SET_COOKIE, cookie ) );
+		}
+	}
+
+	/**
+	 * @return The woinst Set-Cookie value with its instance token replaced by
+	 *         [instanceId] when the app's token isn't a usable instance
+	 *         number (-1, empty, junk). A real positive number is trusted —
+	 *         the app may know something we don't.
+	 */
+	static String correctedWoinst( final String cookieValue, final int instanceId ) {
+		final int separator = cookieValue.indexOf( ';' );
+		final String token = (separator == -1 ? cookieValue : cookieValue.substring( 0, separator )).substring( "woinst=".length() ).replace( "\"", "" ).trim();
+		final String attributes = separator == -1 ? "" : cookieValue.substring( separator );
+
+		try {
+			if( Integer.parseInt( token ) > 0 ) {
+				return cookieValue;
+			}
+		}
+		catch( final NumberFormatException e ) {
+			// junk token — replace
+		}
+
+		return "woinst=" + instanceId + attributes;
 	}
 
 	/**

@@ -75,8 +75,23 @@ public class MDStartPage extends NGComponent {
 	// ------------------------------------------------------------------
 
 	public SettingRow currentSetting;
+	public SettingGroup currentGroup;
 
 	public record SettingRow( String group, String name, String value, String source, String configurable ) {}
+
+	public record SettingGroup( String name, List<SettingRow> rows ) {}
+
+	/**
+	 * @return The settings grouped for display — each group renders as a
+	 *         header row spanning the table
+	 */
+	public List<SettingGroup> settingGroups() {
+		final java.util.LinkedHashMap<String, List<SettingRow>> byGroup = new java.util.LinkedHashMap<>();
+		for( final SettingRow row : settings() ) {
+			byGroup.computeIfAbsent( row.group(), name -> new java.util.ArrayList<>() ).add( row );
+		}
+		return byGroup.entrySet().stream().map( entry -> new SettingGroup( entry.getKey(), entry.getValue() ) ).toList();
+	}
 
 	public List<SettingRow> settings() {
 		final List<SettingRow> rows = new java.util.ArrayList<>();
