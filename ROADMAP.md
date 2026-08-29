@@ -237,7 +237,19 @@ they fit into related work, or when they become blockers:
   first announcement-free response. Wonder's `route_id` cookie is
   deliberately unneeded (it exists for balancers that can't read WO's
   native pinning; modulo can). Remaining: health checks/failover,
-  draining on shutdown, strategies beyond round-robin. On load
+  draining on shutdown, strategies beyond round-robin. A review of
+  mod_WebObjects' sources (2026-08-29) made the failover item
+  concrete — the behaviors worth reimplementing (cleanly) are: a
+  per-app retry budget across *distinct* instances with
+  attempted-instance tracking; a dead cool-down after connect failure
+  (mod_WO: 30s), cleared instantly by any successful response;
+  retries only while the request body is still buffered (a streamed
+  body can't be replayed); and a one-shot retry on connection reset.
+  Also small and worth doing soon: an out-of-band config re-poll when
+  a request names an unknown app or pinned instance (closes the
+  poll-interval gap for freshly deployed apps), and honoring the
+  per-instance `refuseNewSessions=YES` attribute wotaskd's config can
+  carry (we currently only learn refusal from response headers). On load
   signals: WO's `x-webobjects-loadaverage` header is just the active
   session count — a poor measure of real load this century (idle
   sessions weigh nothing, sessionless/API traffic weighs plenty).
@@ -251,6 +263,17 @@ they fit into related work, or when they become blockers:
   covers the human-eyes case; this is the automation case.)
 - **ACME DNS-01** for wildcard certificates and where HTTP-01 is
   impractical — the remaining piece of iteration 5.
+- **Classic mod_WebObjects compatibility bundle.** For adopters running
+  unmodified classic WO apps: inject the chosen instance number into
+  forwarded adaptor URLs (`/App.woa/<N>/...` — cookieless
+  URL-session apps derive their generated-URL pinning from it), and
+  emit the legacy header vocabulary where classic code expects it
+  (`x-webobjects-remote-addr`/`-server-name`/`-server-port` family,
+  `HTTPS`-style scheme markers — Jetty already sends the modern
+  RFC 7239 `Forwarded` header, which classic WO predates). Modulo's
+  own stack doesn't need any of this (cookie-based stickiness is
+  proxy-owned); it's purely an adoption feature — verify against a
+  real classic deployment before building.
 - **Ship the operational skeleton.** systemd unit templates, the
   `/opt/webobjects/{apps,conf,log}` layout, an install script — the
   knowledge a newcomer currently can't get without an existing
