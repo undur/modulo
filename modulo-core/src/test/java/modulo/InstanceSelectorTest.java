@@ -86,6 +86,16 @@ class InstanceSelectorTest {
 	}
 
 	@Test
+	void clearedRefusalRejoinsRotationAndFlags() {
+		final InstanceSelector selector = new InstanceSelector();
+		selector.markRefusing( APP.name(), 2, java.time.Duration.ofMinutes( 5 ) );
+		assertTrue( selector.clearRefusing( APP.name(), 2 ) );
+		assertFalse( selector.isRefusing( APP.name(), 2 ) );
+		// clearing an unmarked instance is not a transition
+		assertFalse( selector.clearRefusing( APP.name(), 2 ) );
+	}
+
+	@Test
 	void refusalExpires() {
 		final InstanceSelector selector = new InstanceSelector();
 		selector.markRefusing( APP.name(), 2, java.time.Duration.ZERO );

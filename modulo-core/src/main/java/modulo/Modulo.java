@@ -256,7 +256,7 @@ public class Modulo {
 		final ServerConnector connector = new ServerConnector( server, connectionFactory );
 		connector.setPort( _port );
 		server.addConnector( connector );
-		_proxy = new ModuloProxy( rewriteURIFunction(), _errorHandling, _events, this::instanceRefusing );
+		_proxy = new ModuloProxy( rewriteURIFunction(), _errorHandling, _events, _refusalObserver );
 		server.setHandler( _proxy );
 		server.setErrorHandler( new ModuloProxy.ModuloErrorHandler( _errorHandling ) );
 
@@ -316,7 +316,7 @@ public class Modulo {
 				_h3FleetStore,
 				fleetSite == null ? null : Set.copyOf( fleetSite.allHostnames() ),
 				config.accessLogDir(),
-				_proxy = new ModuloProxy( rewriteURIFunction(), _errorHandling, _events, this::instanceRefusing ),
+				_proxy = new ModuloProxy( rewriteURIFunction(), _errorHandling, _events, _refusalObserver ),
 				new ModuloProxy.ModuloErrorHandler( _errorHandling ) );
 		_frontend.start();
 
@@ -565,13 +565,26 @@ public class Modulo {
 	 * (pinned session traffic keeps flowing so sessions drain), registering
 	 * an event on the transition.
 	 */
-	private void instanceRefusing( final String applicationName, final int instanceId, final int timeoutSeconds ) {
-		final boolean transition = _instanceSelector.markRefusing( applicationName, instanceId, Duration.ofSeconds( timeoutSeconds ) );
-		if( transition ) {
-			logger.info( "Instance {} of {} is refusing new sessions — steering new traffic to other instances", instanceId, applicationName );
-			_events.add( Event.Severity.INFO, "instance-refusing", null, applicationName, "Instance %d is refusing new sessions; new traffic steered elsewhere while its sessions drain".formatted( instanceId ) );
+	private final ModuloProxy.RefusalObserver _refusalObserver = new ModuloProxy.RefusalObserver() {
+
+		@Override
+		public void refusing( final String applicationName, final int instanceId, final int timeoutSeconds ) {
+			final boolean transition = _instanceSelector.markRefusing( applicationName, instanceId, Duration.ofSeconds( timeoutSeconds ) );
+			if( transition ) {
+				logger.info( "Instance {} of {} is refusing new sessions — steering new traffic to other instances", instanceId, applicationName );
+				_events.add( Event.Severity.INFO, "instance-refusing", null, applicationName, "Instance %d is refusing new sessions; new traffic steered elsewhere while its sessions drain".formatted( instanceId ) );
+			}
 		}
-	}
+
+		@Override
+		public void accepting( final String applicationName, final int instanceId ) {
+			final boolean transition = _instanceSelector.clearRefusing( applicationName, instanceId );
+			if( transition ) {
+				logger.info( "Instance {} of {} is accepting new sessions again", instanceId, applicationName );
+				_events.add( Event.Severity.INFO, "instance-accepting", null, applicationName, "Instance %d is accepting new sessions again".formatted( instanceId ) );
+			}
+		}
+	};
 
 	/**
 	 * @return True if the given instance is currently marked refusing new sessions — for the admin UI
@@ -604,7 +617,16 @@ public class Modulo {
 			// The request is pinned to an instance by an explicit .woa/N/ URL
 			// segment, or failing that by the woinst cookie (WO sessions are
 			// instance-local). Unpinned requests are balanced round-robin.
-			final Integer requestedInstance = target.instanceNumber() != null ? target.instanceNumber() : woinstCookie( request );
+			Integer requestedInstance = target.instanceNumber() != null ? target.instanceNumber() : woinstCookie( request );
+
+			// A pin only matters for continuing a session. A session-less
+			// request pinned to a refusing instance would just get bounced
+			// (WO answers it with a rebalance redirect) — route it to a
+			// willing instance directly instead.
+			if( requestedInstance != null && _instanceSelector.isRefusing( target.applicationName(), requestedInstance ) && !hasSessionCookie( request ) ) {
+				requestedInstance = null;
+			}
+
 			final InstanceSelector.Selection selection = _instanceSelector.select( application, requestedInstance );
 
 			if( selection.fellBack() ) {
@@ -690,6 +712,18 @@ public class Modulo {
 	 *         null when absent or unparsable. WO traditionally quotes the
 	 *         cookie value.
 	 */
+	/**
+	 * @return True if the request carries a WO session cookie
+	 */
+	static boolean hasSessionCookie( final Request request ) {
+		for( final org.eclipse.jetty.http.HttpCookie cookie : Request.getCookies( request ) ) {
+			if( "wosid".equals( cookie.getName() ) && !cookie.getValue().isBlank() ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	static Integer woinstCookie( final Request request ) {
 		for( final org.eclipse.jetty.http.HttpCookie cookie : Request.getCookies( request ) ) {
 			if( "woinst".equals( cookie.getName() ) ) {

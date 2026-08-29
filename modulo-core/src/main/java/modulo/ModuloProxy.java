@@ -40,15 +40,29 @@ class ModuloProxy extends ProxyHandler.Reverse {
 
 	/**
 	 * The response header a WO instance uses to announce it is refusing new
-	 * sessions (set via JavaMonitor's graceful-bounce flow). Its value is the
+	 * sessions, sent on normal (session-drain) responses. Its value is the
 	 * number of seconds the adaptor should consider the instance refusing.
 	 */
 	static final String REFUSING_HEADER = "x-webobjects-refusenewsessions";
 
-	/** Notified when an upstream response announces the instance is refusing new sessions. */
-	@FunctionalInterface
+	/**
+	 * The refusal announcement on *bounce* responses: a refusing instance
+	 * that receives a session-less request answers 302 (meant for the
+	 * adaptor to rebalance) flagged with this header instead of the one
+	 * above. Observed empirically — the two-header split isn't documented
+	 * anywhere friendly.
+	 */
+	static final String REFUSING_REDIRECTION_HEADER = "x-webobjects-refusing-redirection";
+
+	/** Refusal validity when the announcement carries no timeout (the redirection flag). */
+	static final int DEFAULT_REFUSAL_SECONDS = 60;
+
+	/** Notified about the refusing-new-sessions state observed on upstream responses. */
 	interface RefusalObserver {
 		void refusing( String applicationName, int instanceId, int timeoutSeconds );
+
+		/** A response with no refusal announcement — the instance is (back to) accepting. */
+		void accepting( String applicationName, int instanceId );
 	}
 
 	private final ErrorHandling _errorHandling;
@@ -84,17 +98,27 @@ class ModuloProxy extends ProxyHandler.Reverse {
 	protected void addProxyHeaders( Request clientToProxyRequest, org.eclipse.jetty.client.Request proxyToServerRequest ) {
 		super.addProxyHeaders( clientToProxyRequest, proxyToServerRequest );
 
-		// Watch upstream responses for the refusing-new-sessions announcement,
-		// attributing it to the instance the rewriter routed this request to
+		// Watch upstream responses for the refusing-new-sessions announcements
+		// (both dialects), attributing them to the instance the rewriter
+		// routed this request to. A response with neither header clears the
+		// instance's refusing state — that's how "re-allowed" takes effect
+		// before the previous announcement's timeout runs out.
 		if( _refusalObserver != null ) {
 			proxyToServerRequest.onResponseHeaders( serverResponse -> {
+				final String applicationName = (String)clientToProxyRequest.getAttribute( TARGET_APP_ATTRIBUTE );
+				final Integer instanceId = (Integer)clientToProxyRequest.getAttribute( TARGET_INSTANCE_ATTRIBUTE );
+				if( applicationName == null || instanceId == null ) {
+					return;
+				}
 				final String refusingValue = serverResponse.getHeaders().get( REFUSING_HEADER );
 				if( refusingValue != null ) {
-					final String applicationName = (String)clientToProxyRequest.getAttribute( TARGET_APP_ATTRIBUTE );
-					final Integer instanceId = (Integer)clientToProxyRequest.getAttribute( TARGET_INSTANCE_ATTRIBUTE );
-					if( applicationName != null && instanceId != null ) {
-						_refusalObserver.refusing( applicationName, instanceId, parseRefusalTimeout( refusingValue ) );
-					}
+					_refusalObserver.refusing( applicationName, instanceId, parseRefusalTimeout( refusingValue ) );
+				}
+				else if( serverResponse.getHeaders().get( REFUSING_REDIRECTION_HEADER ) != null ) {
+					_refusalObserver.refusing( applicationName, instanceId, DEFAULT_REFUSAL_SECONDS );
+				}
+				else {
+					_refusalObserver.accepting( applicationName, instanceId );
 				}
 			} );
 		}

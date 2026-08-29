@@ -89,6 +89,17 @@ class InstanceSelector {
 		return previous == null || previous.isBefore( Instant.now() );
 	}
 
+	/**
+	 * Clears an instance's refusing state — invoked when an upstream response
+	 * arrives without a refusal announcement.
+	 *
+	 * @return True when this is a transition (the instance was marked refusing)
+	 */
+	boolean clearRefusing( final String applicationName, final int instanceId ) {
+		final Instant previous = _refusingUntil.remove( key( applicationName, instanceId ) );
+		return previous != null && previous.isAfter( Instant.now() );
+	}
+
 	boolean isRefusing( final String applicationName, final int instanceId ) {
 		final Instant until = _refusingUntil.get( key( applicationName, instanceId ) );
 		return until != null && until.isAfter( Instant.now() );
