@@ -1,25 +1,54 @@
 package modulo;
 
-import java.io.ByteArrayInputStream;
-import java.nio.charset.StandardCharsets;
 import java.util.UUID;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 
 import org.eclipse.jetty.client.Response;
 import org.eclipse.jetty.http.HttpURI;
-import org.eclipse.jetty.io.Content;
 import org.eclipse.jetty.proxy.ProxyHandler;
 import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.server.handler.ErrorHandler;
 import org.eclipse.jetty.util.Callback;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import modulo.error.ErrorCondition;
+import modulo.error.ErrorHandling;
+import modulo.error.ProxyRoutingException;
 
 /**
  * Subclass of Jetty's proxy handler, allows us to make required modifications to the proxied request before forwarding it to the instance
  */
 class ModuloProxy extends ProxyHandler.Reverse {
 
-	public ModuloProxy( Function<Request, HttpURI> httpURIRewriter ) {
+	private static final Logger logger = LoggerFactory.getLogger( ModuloProxy.class );
+
+	/** Request attribute carrying the ErrorCondition of a failed proxy attempt, read by ModuloErrorHandler. */
+	static final String ERROR_CONDITION_ATTRIBUTE = "modulo.error-condition";
+
+	private final ErrorHandling _errorHandling;
+
+	public ModuloProxy( Function<Request, HttpURI> httpURIRewriter, ErrorHandling errorHandling ) {
 		super( httpURIRewriter );
+		_errorHandling = errorHandling;
+	}
+
+	/**
+	 * Routing failures (unknown host, app not in adaptor config, no
+	 * instances) surface here as ProxyRoutingException from the URI rewriter
+	 * and are answered directly with the condition's assigned response.
+	 */
+	@Override
+	public boolean handle( Request clientToProxyRequest, org.eclipse.jetty.server.Response proxyToClientResponse, Callback proxyToClientCallback ) {
+		try {
+			return super.handle( clientToProxyRequest, proxyToClientResponse, proxyToClientCallback );
+		}
+		catch( final ProxyRoutingException e ) {
+			logger.info( "{} for {}{}: {}", e.condition(), clientToProxyRequest.getHttpURI().getHost(), clientToProxyRequest.getHttpURI().getPath(), e.getMessage() );
+			_errorHandling.respond( e.condition(), clientToProxyRequest, proxyToClientResponse, proxyToClientCallback );
+			return true;
+		}
 	}
 
 	@Override
@@ -80,53 +109,42 @@ class ModuloProxy extends ProxyHandler.Reverse {
 	}
 
 	/**
-	 * TODO: Keep track of proxying errors
+	 * Failures on the proxy → app hop. We tag the request with the matching
+	 * ErrorCondition, then let Jetty's normal error flow run (which handles
+	 * aborting the upstream exchange correctly) — ModuloErrorHandler picks
+	 * the condition back up and renders its assigned response.
 	 */
 	@Override
 	protected void onServerToProxyResponseFailure( Request clientToProxyRequest, org.eclipse.jetty.client.Request proxyToServerRequest, Response serverToProxyResponse, org.eclipse.jetty.server.Response proxyToClientResponse, Callback proxyToClientCallback, Throwable failure ) {
-
-		// FIXME: Mark the request so we can identify the error that occurred during error handling and return an appropriate response. Probably lame // Hugi 2025-10-12
-		clientToProxyRequest.setAttribute( "modulo-error", "onServerToProxyResponseFailure" );
-
+		final ErrorCondition condition = failure instanceof TimeoutException ? ErrorCondition.UPSTREAM_TIMEOUT : ErrorCondition.UPSTREAM_UNREACHABLE;
+		logger.warn( "{} proxying {}{} -> {}: {}", condition, clientToProxyRequest.getHttpURI().getHost(), clientToProxyRequest.getHttpURI().getPath(), proxyToServerRequest.getURI(), failure.toString() );
+		clientToProxyRequest.setAttribute( ERROR_CONDITION_ATTRIBUTE, condition );
 		super.onServerToProxyResponseFailure( clientToProxyRequest, proxyToServerRequest, serverToProxyResponse, proxyToClientResponse, proxyToClientCallback, failure );
 	}
 
 	/**
-	 * Generates an error response
-	 *
-	 * FIXME: Work in progress, currently only generates a little experimental custom message for failure when contacting the remote application // Hugi 2025-10-12
+	 * The server-level error handler: renders the tagged ErrorCondition's
+	 * assigned response when a proxy failure brought us here, and the
+	 * INTERNAL condition's response for everything else.
 	 */
 	public static class ModuloErrorHandler extends ErrorHandler {
 
+		private final ErrorHandling _errorHandling;
+
+		public ModuloErrorHandler( final ErrorHandling errorHandling ) {
+			_errorHandling = errorHandling;
+		}
+
 		@Override
 		public boolean handle( Request request, org.eclipse.jetty.server.Response response, Callback callback ) throws Exception {
+			ErrorCondition condition = (ErrorCondition)request.getAttribute( ERROR_CONDITION_ATTRIBUTE );
 
-			final String moduloError = (String)request.getAttribute( "modulo-error" );
-
-			switch( moduloError ) {
-				case "onServerToProxyResponseFailure" -> {
-					// HTTP status returned from server
-					final int status = (int)request.getAttribute( ErrorHandler.ERROR_STATUS );
-
-					// Error messageg generated by the proxy
-					final String errorMessage = (String)request.getAttribute( ErrorHandler.ERROR_MESSAGE );
-
-					// Eception that occurred (probably null for most cases, since a timeout/connection error is more likely than an internal error)
-					final Throwable exception = (Throwable)request.getAttribute( ErrorHandler.ERROR_EXCEPTION );
-
-					final Object exceptionClassName = exception != null ? exception.getClass().getName() : "[No further exception information available]";
-
-					final String message = "Error contacting remote app. %s %s. %s".formatted( status, errorMessage, exceptionClassName );
-					final byte[] content = message.getBytes( StandardCharsets.UTF_8 );
-					final Content.Source cs = Content.Source.from( new ByteArrayInputStream( content ) );
-					response.getHeaders().put( "content-length", String.valueOf( content.length ) );
-					Content.copy( cs, response, callback );
-					return false;
-				}
-				default -> {
-					return super.handle( request, response, callback );
-				}
+			if( condition == null ) {
+				condition = ErrorCondition.INTERNAL;
 			}
+
+			_errorHandling.respond( condition, request, response, callback );
+			return true;
 		}
 	}
 }

@@ -32,6 +32,7 @@ import org.eclipse.jetty.server.SecureRequestCustomizer;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.ServerConnector;
 import org.eclipse.jetty.server.SslConnectionFactory;
+import org.eclipse.jetty.server.handler.ErrorHandler;
 import org.eclipse.jetty.util.Callback;
 import org.eclipse.jetty.util.ssl.SslContextFactory;
 import org.eclipse.jetty.util.thread.QueuedThreadPool;
@@ -61,6 +62,7 @@ public class JettyFrontend {
 	private final int httpsPort;
 	private final boolean http3Enabled;
 	private final Handler terminalHandler;
+	private final ErrorHandler errorHandler;
 
 	private Server server;
 	private Path http3PemWorkDir;
@@ -72,7 +74,7 @@ public class JettyFrontend {
 			final int httpPort,
 			final int httpsPort,
 			final Handler terminalHandler ) {
-		this( sites, certStore, acmeWebroot, null, httpPort, httpsPort, false, terminalHandler );
+		this( sites, certStore, acmeWebroot, null, httpPort, httpsPort, false, terminalHandler, null );
 	}
 
 	/**
@@ -81,6 +83,8 @@ public class JettyFrontend {
 	 * @param acmeChallengeSource Optional in-memory challenge source (token →
 	 *            key authorization) for modulo's own ACME manager; consulted
 	 *            before the webroot. Null disables.
+	 * @param errorHandler Optional server-level error handler (rendering the
+	 *            embedder's error pages). Null keeps Jetty's default.
 	 */
 	public JettyFrontend(
 			final List<Site> sites,
@@ -90,7 +94,8 @@ public class JettyFrontend {
 			final int httpPort,
 			final int httpsPort,
 			final boolean http3Enabled,
-			final Handler terminalHandler ) {
+			final Handler terminalHandler,
+			final ErrorHandler errorHandler ) {
 		this.sites = List.copyOf( sites );
 		this.certStore = certStore;
 		this.acmeWebroot = acmeWebroot;
@@ -99,6 +104,7 @@ public class JettyFrontend {
 		this.httpsPort = httpsPort;
 		this.http3Enabled = http3Enabled;
 		this.terminalHandler = terminalHandler;
+		this.errorHandler = errorHandler;
 	}
 
 	public Server start() throws Exception {
@@ -124,6 +130,10 @@ public class JettyFrontend {
 		final Map<String, Site> sitesByHost = buildHostMap( sites );
 		final Handler chain = buildHandlerChain( sitesByHost );
 		server.setHandler( chain );
+
+		if( errorHandler != null ) {
+			server.setErrorHandler( errorHandler );
+		}
 
 		server.addConnector( buildHttpConnector() );
 		server.addConnector( buildHttpsConnector( sslContextFactory ) );

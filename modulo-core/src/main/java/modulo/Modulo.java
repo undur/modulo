@@ -26,6 +26,9 @@ import org.slf4j.LoggerFactory;
 
 import modulo.config.SitesConfig;
 import modulo.config.SitesConfigReader;
+import modulo.error.ErrorCondition;
+import modulo.error.ErrorHandling;
+import modulo.error.ProxyRoutingException;
 import modulo.frontend.FrontendConfig;
 import modulo.frontend.JettyFrontend;
 import modulo.frontend.site.Site;
@@ -95,6 +98,13 @@ public class Modulo {
 	 * plain-proxy mode. Exposed for the overview page.
 	 */
 	private SitesConfig _sitesConfig;
+
+	/**
+	 * How error conditions are answered. Defaults to modulo's error page for
+	 * every condition; the embedding application may reassign individual
+	 * conditions via {@link #errorHandling()}.
+	 */
+	private final ErrorHandling _errorHandling = ErrorHandling.withDefaults();
 
 	/**
 	 * Construct a new instance running the plain reverse-proxy connector on
@@ -210,8 +220,8 @@ public class Modulo {
 		final ServerConnector connector = new ServerConnector( server, connectionFactory );
 		connector.setPort( _port );
 		server.addConnector( connector );
-		server.setHandler( new ModuloProxy( rewriteURIFunction() ) );
-		server.setErrorHandler( new ModuloProxy.ModuloErrorHandler() );
+		server.setHandler( new ModuloProxy( rewriteURIFunction(), _errorHandling ) );
+		server.setErrorHandler( new ModuloProxy.ModuloErrorHandler( _errorHandling ) );
 
 		server.start();
 	}
@@ -257,7 +267,8 @@ public class Modulo {
 				config.httpPort(),
 				config.httpsPort(),
 				config.http3(),
-				new ModuloProxy( rewriteURIFunction() ) );
+				new ModuloProxy( rewriteURIFunction(), _errorHandling ),
+				new ModuloProxy.ModuloErrorHandler( _errorHandling ) );
 		frontend.start();
 
 		// Only after the server is up — HTTP-01 needs the HTTP connector answering
@@ -348,6 +359,13 @@ public class Modulo {
 		return _frontendConfig;
 	}
 
+	/**
+	 * @return The error-condition → response registry, for assigning custom responders
+	 */
+	public ErrorHandling errorHandling() {
+		return _errorHandling;
+	}
+
 	private void startAdaptorConfigAutoReloader() {
 		final TimerTask adaptorConfigReloadTask = new TimerTask() {
 			@Override
@@ -398,13 +416,13 @@ public class Modulo {
 			final App application = _adaptorConfig.application( applicationName );
 
 			if( application == null ) {
-				throw new IllegalArgumentException( "No application found with the name %s".formatted( applicationName ) );
+				throw new ProxyRoutingException( ErrorCondition.APP_UNAVAILABLE, "No application found with the name %s".formatted( applicationName ) );
 			}
 
 			final List<Instance> instances = application.instances();
 
 			if( instances.isEmpty() ) {
-				throw new IllegalStateException( "No instances registered for application %s".formatted( applicationName ) );
+				throw new ProxyRoutingException( ErrorCondition.NO_INSTANCES, "No instances registered for application %s".formatted( applicationName ) );
 			}
 
 			// FIXME: We're hardcoding targeting the first instance for testing // Hugi 2025-04-22
@@ -442,7 +460,7 @@ public class Modulo {
 				return domainDefaultAppName;
 			}
 
-			throw new IllegalArgumentException( "The uri '%s' does not start with an adaptor URL and we're not serving a known domain".formatted( uriString ) );
+			throw new ProxyRoutingException( ErrorCondition.NO_APP_FOR_HOST, "The uri '%s' does not start with an adaptor URL and host '%s' has no app configured".formatted( uriString, host ) );
 		}
 
 		String appName = uriString.substring( ADAPTOR_URL.length() );
