@@ -22,6 +22,9 @@
 								<td class="text-secondary"><wo:str value="$currentInstance.host" /></td>
 								<td><wo:str value="$currentInstance.port" /></td>
 								<td>
+									<wo:if condition="$currentInstanceUnregistered">
+										<span class="badge bg-secondary-lt" title="Alive but no longer configured — winding down; never load-balanced to">unregistered</span>
+									</wo:if>
 									<wo:if condition="$currentInstanceDead">
 										<span class="badge bg-red-lt">unreachable</span>
 									</wo:if>

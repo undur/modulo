@@ -745,7 +745,21 @@ public class Modulo {
 					requestedInstance = null;
 				}
 
+				// When only unregistered (winding-down) instances remain —
+				// wotaskd reports processes without configuration as negative
+				// ids — unpinned traffic gets an honest "unavailable" rather
+				// than whatever a dying ghost would answer. Explicit pins to
+				// unregistered instances still work; that's their purpose.
+				final boolean hasRegisteredInstances = instances.stream().anyMatch( instance -> instance.id() >= 0 );
+				if( requestedInstance == null && !hasRegisteredInstances ) {
+					throw new ProxyRoutingException( ErrorCondition.NO_INSTANCES, "Only unregistered (winding-down) instances remain for %s".formatted( application.name() ) );
+				}
+
 				final InstanceSelector.Selection selection = _instanceSelector.select( application, requestedInstance );
+
+				if( selection.fellBack() && selection.instance().id() < 0 ) {
+					throw new ProxyRoutingException( ErrorCondition.NO_INSTANCES, "Pinned instance %d of %s is gone and only unregistered instances remain".formatted( requestedInstance, application.name() ) );
+				}
 
 				if( selection.fellBack() ) {
 					logger.warn( "Instance {} of {} is no longer registered — rerouting to instance {}", requestedInstance, application.name(), selection.instance().id() );
@@ -820,14 +834,17 @@ public class Modulo {
 			return new RequestTarget( appName, null );
 		}
 
-		// A digits-only segment right after ".woa/" pins the request to that instance (mod_WebObjects convention)
+		// A numeric segment right after ".woa/" pins the request to that
+		// instance (mod_WebObjects convention). A leading '-' is allowed —
+		// negative numbers are wotaskd's ids for unregistered instances,
+		// which are reachable only via this explicit pin.
 		final String afterWoa = appName.substring( periodIndex + ".woa".length() );
 		appName = appName.substring( 0, periodIndex );
 
 		if( afterWoa.startsWith( "/" ) ) {
 			final int nextSlash = afterWoa.indexOf( '/', 1 );
 			final String segment = nextSlash == -1 ? afterWoa.substring( 1 ) : afterWoa.substring( 1, nextSlash );
-			if( !segment.isEmpty() && segment.chars().allMatch( Character::isDigit ) ) {
+			if( isInstanceNumber( segment ) ) {
 				return new RequestTarget( appName, Integer.valueOf( segment ) );
 			}
 		}
@@ -857,12 +874,24 @@ public class Modulo {
 		for( final org.eclipse.jetty.http.HttpCookie cookie : Request.getCookies( request ) ) {
 			if( "woinst".equals( cookie.getName() ) ) {
 				final String value = cookie.getValue().replace( "\"", "" ).trim();
-				if( !value.isEmpty() && value.chars().allMatch( Character::isDigit ) ) {
+				// -1 means "instance unknown" — not a pin. Other negative
+				// values pin to unregistered instances, positives to regular.
+				if( isInstanceNumber( value ) && !"-1".equals( value ) ) {
 					return Integer.valueOf( value );
 				}
 				return null;
 			}
 		}
 		return null;
+	}
+
+	/**
+	 * @return True if [value] is a valid instance number: digits with an
+	 *         optional leading '-' (wotaskd ids unregistered instances with
+	 *         negative numbers)
+	 */
+	private static boolean isInstanceNumber( final String value ) {
+		final String digits = value.startsWith( "-" ) ? value.substring( 1 ) : value;
+		return !digits.isEmpty() && digits.chars().allMatch( Character::isDigit );
 	}
 }

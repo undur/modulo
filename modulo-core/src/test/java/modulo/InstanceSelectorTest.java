@@ -147,6 +147,23 @@ class InstanceSelectorTest {
 		assertEquals( TWO, selector.selectForRetry( APP, Set.of( 1, 3 ) ) );
 	}
 
+	/**
+	 * wotaskd reports alive-but-unconfigured processes as negative instance
+	 * ids (-port). They are never balanced to — explicit pin only.
+	 */
+	@Test
+	void unregisteredInstancesAreNeverBalancedTo() {
+		final Instance ghost = new Instance( -2014, "host-a", 2014 );
+		final App mixed = new App( "Mixed", List.of( ONE, ghost ) );
+		final InstanceSelector selector = new InstanceSelector();
+
+		final Set<Instance> picked = IntStream.range( 0, 6 ).mapToObj( i -> selector.select( mixed, null ).instance() ).collect( Collectors.toSet() );
+		assertEquals( Set.of( ONE ), picked );
+
+		// explicit pin reaches it
+		assertEquals( ghost, selector.select( mixed, -2014 ).instance() );
+	}
+
 	@Test
 	void roundRobinCountersAreIndependentPerApp() {
 		final App other = new App( "Other", List.of( ONE, TWO ) );

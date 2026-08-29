@@ -52,8 +52,17 @@ public class MDApplicationsPage extends NGComponent {
 		return modulo().instanceDead( currentApplication.name(), currentInstance.id() );
 	}
 
+	/**
+	 * @return True if the instance is one of wotaskd's unregistered entries —
+	 *         a process alive without configuration, reported as a negative
+	 *         instance number (-port)
+	 */
+	public boolean currentInstanceUnregistered() {
+		return currentInstance.id() < 0;
+	}
+
 	public boolean currentInstanceHealthy() {
-		return !currentInstanceDead() && !currentInstanceRefusing();
+		return !currentInstanceDead() && !currentInstanceRefusing() && !currentInstanceUnregistered();
 	}
 
 	public String currentInstanceCount() {

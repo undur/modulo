@@ -90,8 +90,9 @@ class InstanceSelector {
 			return null;
 		}
 
-		// Prefer live, willing instances among the remaining; settle for any remaining
+		// Prefer live, willing, registered instances among the remaining; settle for any remaining
 		final List<Instance> preferred = remaining.stream()
+				.filter( instance -> instance.id() >= 0 )
 				.filter( instance -> !isDead( application.name(), instance.id() ) && !isRefusing( application.name(), instance.id() ) )
 				.toList();
 
@@ -103,9 +104,14 @@ class InstanceSelector {
 	private Instance roundRobin( final App application, final Set<Integer> excludedInstanceIds ) {
 		// New traffic avoids excluded (already-attempted) instances, dead
 		// instances (in their post-connect-failure cool-down) and instances
-		// refusing new sessions. If that leaves nothing, serve from the full
-		// non-excluded list anyway — a reluctant instance beats an error page.
+		// refusing new sessions. Unregistered instances — wotaskd reports
+		// processes that are alive but no longer configured with negative
+		// instance numbers (-port) — are never balanced to, only reachable
+		// by explicit pin (mod_WebObjects' schedulability rule). If the
+		// filters leave nothing, serve from the non-excluded registered list
+		// anyway — a reluctant instance beats an error page.
 		final List<Instance> notExcluded = application.instances().stream()
+				.filter( instance -> instance.id() >= 0 )
 				.filter( instance -> !excludedInstanceIds.contains( instance.id() ) )
 				.toList();
 
