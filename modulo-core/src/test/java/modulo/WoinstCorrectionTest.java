@@ -24,13 +24,18 @@ class WoinstCorrectionTest {
 		assertEquals( List.of( "wosid=abc; version=\"1\"; path=/", "woinst=4; version=\"1\"; path=/" ), cookies( headers ) );
 	}
 
+	/**
+	 * The app is never the authority: a WO app "knows" its instance number by
+	 * echoing the request's woinst cookie, so after failover its confident
+	 * value is the stale client cookie reflected back. Always overwrite.
+	 */
 	@Test
-	void realWoinstIsTrusted() {
+	void appAssertedWoinstIsOverriddenWithRoutedInstance() {
 		final HttpFields.Mutable headers = HttpFields.build();
 		headers.add( HttpHeader.SET_COOKIE, "woinst=2; path=/" );
 
 		ModuloProxy.ensureTruthfulWoinst( 4, headers );
-		assertEquals( List.of( "woinst=2; path=/" ), cookies( headers ) );
+		assertEquals( List.of( "woinst=4; path=/" ), cookies( headers ) );
 	}
 
 	@Test
@@ -61,8 +66,9 @@ class WoinstCorrectionTest {
 	}
 
 	@Test
-	void quotedJunkTokenIsReplaced() {
+	void anyTokenShapeIsReplaced() {
 		assertEquals( "woinst=5; path=/", ModuloProxy.correctedWoinst( "woinst=\"-1\"; path=/", 5 ) );
+		assertEquals( "woinst=5; path=/", ModuloProxy.correctedWoinst( "woinst=3; path=/", 5 ) );
 		assertEquals( "woinst=5", ModuloProxy.correctedWoinst( "woinst=", 5 ) );
 	}
 }

@@ -214,24 +214,17 @@ class ModuloProxy extends ProxyHandler.Reverse {
 
 	/**
 	 * @return The woinst Set-Cookie value with its instance token replaced by
-	 *         [instanceId] when the app's token isn't a usable instance
-	 *         number (-1, empty, junk). A real positive number is trusted —
-	 *         the app may know something we don't.
+	 *         [instanceId] — unconditionally. The app is never the authority
+	 *         on which instance it is: a WO app "learns" its number by echoing
+	 *         the request's woinst cookie, so after a failover its confident
+	 *         positive value is just the stale client cookie reflected back
+	 *         (observed in production: dead instance 3's ghost re-asserted by
+	 *         its replacement). The routing decision modulo just made is the
+	 *         only truth.
 	 */
 	static String correctedWoinst( final String cookieValue, final int instanceId ) {
 		final int separator = cookieValue.indexOf( ';' );
-		final String token = (separator == -1 ? cookieValue : cookieValue.substring( 0, separator )).substring( "woinst=".length() ).replace( "\"", "" ).trim();
 		final String attributes = separator == -1 ? "" : cookieValue.substring( separator );
-
-		try {
-			if( Integer.parseInt( token ) > 0 ) {
-				return cookieValue;
-			}
-		}
-		catch( final NumberFormatException e ) {
-			// junk token — replace
-		}
-
 		return "woinst=" + instanceId + attributes;
 	}
 
