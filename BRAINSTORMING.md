@@ -146,16 +146,6 @@ away. Not urgent — our per-request hop is already in the microseconds
 on loopback and isn't the bottleneck — but worth picking up the day
 performance or local-trust become design pressures.
 
-### WebSocket / streaming-aware proxying
-
-Long-lived connections (WebSocket, SSE, gRPC) need different handling
-than request/response: idle timeouts, half-close semantics, careful
-header forwarding. WO/ng now have WebSocket support; modulo's proxy
-path should be verified end-to-end.
-
-Lower-effort than the other items — mostly a "test, then fix what
-breaks" exercise, not a design effort.
-
 ### Multiple upstream instances per site — real load balancing
 
 The roadmap mentions "multi-instance app routing" as a polish item,
