@@ -166,6 +166,15 @@ public class Application extends NGApplication {
 	}
 
 	/**
+	 * @return True if an admin password is configured — for the config
+	 *         inventory display (never the value itself, obviously)
+	 */
+	boolean adminPasswordConfigured() {
+		final String password = _config.getProperty( "modulo.admin-password" );
+		return password != null && !password.isBlank();
+	}
+
+	/**
 	 * The shared guard for all admin pages/endpoints, driven by the
 	 * {@code modulo.admin-password} property from modulo.conf:
 	 *

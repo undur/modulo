@@ -70,7 +70,23 @@ public class JettyFrontend {
 	private final Path accessLogDir;
 
 	/** Days of per-site access logs to retain. FIXME: Make configurable when the logging config surface grows // 2026-08-29 */
-	private static final int ACCESS_LOG_RETAIN_DAYS = 90;
+	public static final int ACCESS_LOG_RETAIN_DAYS = 90;
+
+	/** Max worker threads for the front-end server. FIXME: Make configurable // 2026-08-29 */
+	public static final int MAX_THREADS = 200;
+
+	/** How long clients may cache the h3 Alt-Svc advertisement, seconds. FIXME: Make configurable // 2026-08-29 */
+	public static final int ALT_SVC_MAX_AGE_SECONDS = 86400;
+
+	// --- Compression tuning knobs (all FIXME-configurable; see buildCompressionHandler) ---
+	/** gzip 1..9; 6 is the standard speed/ratio trade-off, matches Apache's default */
+	public static final int COMPRESSION_LEVEL = 6;
+	/** Matches the AddOutputFilterByType list from the Apache config */
+	public static final List<String> COMPRESS_MIME_TYPES = List.of(
+			"text/html", "text/plain", "text/xml", "text/css", "text/javascript",
+			"application/javascript", "application/json", "application/xml", "image/svg+xml" );
+	/** Only compress GET responses; other methods are typically tiny / non-cacheable */
+	public static final boolean COMPRESS_GET_ONLY = true;
 
 	private Server server;
 	private Path http3PemWorkDir;
@@ -152,7 +168,7 @@ public class JettyFrontend {
 
 	public Server start() throws Exception {
 		final QueuedThreadPool threadPool = new QueuedThreadPool();
-		threadPool.setMaxThreads( 200 );
+		threadPool.setMaxThreads( MAX_THREADS );
 		threadPool.setVirtualThreadsExecutor( Executors.newVirtualThreadPerTaskExecutor() );
 		server = new Server( threadPool );
 
@@ -360,21 +376,6 @@ public class JettyFrontend {
 	 * is mechanical. // 2026-05-21
 	 */
 	private static Handler buildCompressionHandler( final Handler downstream ) {
-		// --- Tuning knobs (all FIXME-configurable) -----------------------
-		final int COMPRESSION_LEVEL = 6;                 // gzip 1..9; 6 is the standard speed/ratio trade-off, matches Apache's default
-		final List<String> COMPRESS_MIME_TYPES = List.of(
-				"text/html",
-				"text/plain",
-				"text/xml",
-				"text/css",
-				"text/javascript",
-				"application/javascript",
-				"application/json",
-				"application/xml",
-				"image/svg+xml" );                       // matches the AddOutputFilterByType list from the Apache config
-		final boolean COMPRESS_GET_ONLY = true;          // only compress GET responses; other methods are typically tiny / non-cacheable
-		// -----------------------------------------------------------------
-
 		final GzipEncoderConfig encoderConfig = new GzipEncoderConfig();
 		encoderConfig.setCompressionLevel( COMPRESSION_LEVEL );
 
@@ -539,7 +540,7 @@ public class JettyFrontend {
 
 		AltSvcHandler( final int httpsPort, final Supplier<Set<String>> coveredHosts, final Handler next ) {
 			super( next );
-			this.altSvcValue = "h3=\":" + httpsPort + "\"; ma=86400";
+			this.altSvcValue = "h3=\":" + httpsPort + "\"; ma=" + ALT_SVC_MAX_AGE_SECONDS;
 			this.coveredHosts = coveredHosts;
 		}
 

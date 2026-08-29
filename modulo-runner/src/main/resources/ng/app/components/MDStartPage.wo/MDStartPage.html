@@ -14,4 +14,34 @@
 			</div>
 		</div>
 	</div>
+	<div class="row">
+		<div class="col-12">
+			<div class="card mb-3">
+				<div class="card-header">
+					<h3>Configuration</h3>
+					<div class="card-subtitle">Every value the server runs with — including the currently unmodifiable "sensible defaults". "Configurable: not yet" doubles as the to-do list for the config surface.</div>
+				</div>
+				<table class="table table-sm mb-0">
+					<thead>
+						<tr>
+							<th>Group</th>
+							<th>Setting</th>
+							<th>Value</th>
+							<th>Source</th>
+							<th>Configurable</th>
+						</tr>
+					</thead>
+					<wo:repetition list="$settings" item="$currentSetting">
+						<tr>
+							<td class="text-secondary"><wo:str value="$currentSetting.group" /></td>
+							<td><wo:str value="$currentSetting.name" /></td>
+							<td><code><wo:str value="$currentSetting.value" /></code></td>
+							<td class="text-secondary"><wo:str value="$currentSetting.source" /></td>
+							<td><wo:str value="$currentSetting.configurable" /></td>
+						</tr>
+					</wo:repetition>
+				</table>
+			</div>
+		</div>
+	</div>
 </wo:MDLook>

@@ -78,13 +78,13 @@ public class AcmeManager {
 	}
 
 	/** Renew when less than this remains of the certificate's validity. Let's Encrypt certs live 90 days; 30 leaves ample retry room. */
-	private static final Duration RENEW_BEFORE_EXPIRY = Duration.ofDays( 30 );
+	public static final Duration RENEW_BEFORE_EXPIRY = Duration.ofDays( 30 );
 
 	/** How often the renewal check runs. */
-	private static final Duration CHECK_INTERVAL = Duration.ofHours( 12 );
+	public static final Duration CHECK_INTERVAL = Duration.ofHours( 12 );
 
-	private static final Duration CHALLENGE_TIMEOUT = Duration.ofMinutes( 3 );
-	private static final Duration ORDER_TIMEOUT = Duration.ofMinutes( 3 );
+	public static final Duration CHALLENGE_TIMEOUT = Duration.ofMinutes( 3 );
+	public static final Duration ORDER_TIMEOUT = Duration.ofMinutes( 3 );
 
 	/** May be null while no site is ACME-managed. Swappable via {@link #update} for config reload. */
 	private volatile AcmeSettings settings;

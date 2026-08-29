@@ -58,8 +58,11 @@ public class CertStore {
 	private final List<Consumer<KeyStore>> reloadListeners = new ArrayList<>();
 	private Timer pollTimer;
 
+	/** How often cert/key file mtimes are polled for changes. FIXME: Make configurable // 2026-08-29 */
+	public static final Duration DEFAULT_POLL_INTERVAL = Duration.ofMinutes( 5 );
+
 	public CertStore( final List<Site> sites ) {
-		this( sites, Duration.ofMinutes( 5 ) );
+		this( sites, DEFAULT_POLL_INTERVAL );
 	}
 
 	public CertStore( final List<Site> sites, final Duration pollInterval ) {

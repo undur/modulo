@@ -64,14 +64,24 @@ public class Modulo {
 	 *
 	 * FIXME: Should be settable/configurable // Hugi 2025-10-09
 	 */
-	private static final Duration DEFAULT_CONFIG_RELOAD_DURATION = Duration.ofSeconds( 10 );
+	public static final Duration DEFAULT_CONFIG_RELOAD_DURATION = Duration.ofSeconds( 10 );
 
 	/**
 	 * Adaptor URL
 	 *
 	 * FIXME: Should be settable/configurable // Hugi 2025-10-09
 	 */
-	private static final String ADAPTOR_URL = "/Apps/WebObjects/";
+	public static final String ADAPTOR_URL = "/Apps/WebObjects/";
+
+	/**
+	 * Max worker threads for the plain proxy server. FIXME: Make configurable // 2026-08-29
+	 */
+	public static final int PLAIN_PROXY_MAX_THREADS = 200;
+
+	/**
+	 * How many recent events the in-memory buffer keeps. FIXME: Make configurable // 2026-08-29
+	 */
+	public static final int EVENT_BUFFER_CAPACITY = 1000;
 
 	/**
 	 * The port to the proxy will run on
@@ -113,7 +123,10 @@ public class Modulo {
 	 * Recent noteworthy occurrences (proxy failures, certs obtained/failed,
 	 * config reloads), buffered for inspection through the admin UI.
 	 */
-	private final EventLog _events = new EventLog( 1000 );
+	private final EventLog _events = new EventLog( EVENT_BUFFER_CAPACITY );
+
+	/** The proxy handler in use, kept so the admin UI can read the live proxy-client settings. */
+	private ModuloProxy _proxy;
 
 	/** The front-end's moving parts, kept for config reload. All null in plain-proxy mode. */
 	private CertStore _certStore;
@@ -231,7 +244,7 @@ public class Modulo {
 	 */
 	private void startPlain() throws Exception {
 		final QueuedThreadPool threadPool = new QueuedThreadPool();
-		threadPool.setMaxThreads( 200 ); // FIXME: Make configurable
+		threadPool.setMaxThreads( PLAIN_PROXY_MAX_THREADS );
 		threadPool.setVirtualThreadsExecutor( Executors.newVirtualThreadPerTaskExecutor() );
 		final Server server = new Server( threadPool );
 
@@ -242,7 +255,8 @@ public class Modulo {
 		final ServerConnector connector = new ServerConnector( server, connectionFactory );
 		connector.setPort( _port );
 		server.addConnector( connector );
-		server.setHandler( new ModuloProxy( rewriteURIFunction(), _errorHandling, _events ) );
+		_proxy = new ModuloProxy( rewriteURIFunction(), _errorHandling, _events );
+		server.setHandler( _proxy );
 		server.setErrorHandler( new ModuloProxy.ModuloErrorHandler( _errorHandling ) );
 
 		server.start();
@@ -301,7 +315,7 @@ public class Modulo {
 				_h3FleetStore,
 				fleetSite == null ? null : Set.copyOf( fleetSite.allHostnames() ),
 				config.accessLogDir(),
-				new ModuloProxy( rewriteURIFunction(), _errorHandling, _events ),
+				_proxy = new ModuloProxy( rewriteURIFunction(), _errorHandling, _events ),
 				new ModuloProxy.ModuloErrorHandler( _errorHandling ) );
 		_frontend.start();
 
@@ -493,6 +507,14 @@ public class Modulo {
 	 */
 	public EventLog events() {
 		return _events;
+	}
+
+	/**
+	 * @return The proxy → upstream HttpClient (for reading its live settings
+	 *         in the admin UI). Null before startup completes.
+	 */
+	public org.eclipse.jetty.client.HttpClient proxyHttpClient() {
+		return _proxy == null ? null : _proxy.getHttpClient();
 	}
 
 	private void startAdaptorConfigAutoReloader() {
