@@ -138,10 +138,25 @@ public class Application extends NGApplication {
 				.create()
 				.map( "/WOAdaptorInfo", request -> new NGResponse( _modulo.adaptorConfig().toString(), 200 ) )
 				.map( "/overview", MDOverviewPage.class )
-				.map( "/adaptor", MDAdaptorPage.class )
+				.map( "/applications", MDApplicationsPage.class )
 				.map( "/events", MDEventsPage.class )
+				.map( "/config", MDConfigPage.class )
+				.map( "/stats.json", this::statsJson )
 				.map( "/reload", this::reloadAction )
 				.map( "/", MDStartPage.class );
+	}
+
+	/**
+	 * The dashboard's data: per-app request counts (minute-bucketed, last
+	 * hour) and average response times, as JSON. Guarded like everything else
+	 * by the dispatch-level admin guard.
+	 */
+	private NGActionResults statsJson( final NGRequest request ) {
+		final modulo.stats.RequestStats.Snapshot snapshot = _modulo.requestStats().snapshot();
+		final String json = tools.jackson.databind.json.JsonMapper.builder().build().writeValueAsString( snapshot );
+		final NGResponse response = new NGResponse( json, 200 );
+		response.setHeader( "content-type", "application/json" );
+		return response;
 	}
 
 	/**

@@ -23,6 +23,7 @@ import modulo.error.ErrorHandling;
 import modulo.error.ProxyRoutingException;
 import modulo.frontend.events.Event;
 import modulo.frontend.events.EventLog;
+import modulo.stats.RequestStats;
 
 /**
  * Subclass of Jetty's proxy handler, allows us to make required modifications to the proxied request before forwarding it to the instance
@@ -74,12 +75,14 @@ class ModuloProxy extends ProxyHandler.Reverse {
 	private final ErrorHandling _errorHandling;
 	private final EventLog _eventLog;
 	private final RefusalObserver _refusalObserver;
+	private final RequestStats _requestStats;
 
-	public ModuloProxy( Function<Request, HttpURI> httpURIRewriter, ErrorHandling errorHandling, EventLog eventLog, RefusalObserver refusalObserver ) {
+	public ModuloProxy( Function<Request, HttpURI> httpURIRewriter, ErrorHandling errorHandling, EventLog eventLog, RefusalObserver refusalObserver, RequestStats requestStats ) {
 		super( httpURIRewriter );
 		_errorHandling = errorHandling;
 		_eventLog = eventLog;
 		_refusalObserver = refusalObserver;
+		_requestStats = requestStats;
 	}
 
 	/**
@@ -197,6 +200,17 @@ class ModuloProxy extends ProxyHandler.Reverse {
 			public void onHeaders( final org.eclipse.jetty.client.Response serverToProxyResponse ) {
 				super.onHeaders( serverToProxyResponse );
 				ensureTruthfulWoinst( (Integer)clientToProxyRequest.getAttribute( TARGET_INSTANCE_ATTRIBUTE ), proxyToClientResponse.getHeaders() );
+			}
+
+			@Override
+			public void onComplete( final org.eclipse.jetty.client.Result result ) {
+				if( _requestStats != null && result.isSucceeded() ) {
+					final String applicationName = (String)clientToProxyRequest.getAttribute( TARGET_APP_ATTRIBUTE );
+					if( applicationName != null ) {
+						_requestStats.record( applicationName, java.util.concurrent.TimeUnit.NANOSECONDS.toMillis( System.nanoTime() - clientToProxyRequest.getBeginNanoTime() ) );
+					}
+				}
+				super.onComplete( result );
 			}
 		};
 	}

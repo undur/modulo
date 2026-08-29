@@ -1,7 +1,7 @@
 <wo:MDLook>
 	<div class="row">
-		<div class="col-lg-6 col-md-10 col-sm-12">
-			<div class="card">
+		<div class="col-lg-4 col-md-6 col-sm-12">
+			<div class="card mb-3">
 				<div class="card-header">
 					<h3>🤖 Modulo</h3>
 				</div>
@@ -13,38 +13,69 @@
 				</table>
 			</div>
 		</div>
+		<div class="col-lg-4 col-md-6 col-sm-12">
+			<div class="card mb-3">
+				<div class="card-header">
+					<h3>Response times — last hour</h3>
+				</div>
+				<wo:if condition="$hasTraffic" negate="true">
+					<div class="card-body text-secondary">No proxied traffic in the window yet.</div>
+				</wo:if>
+				<wo:if condition="$hasTraffic">
+					<table class="table table-sm mb-0">
+						<thead>
+							<tr><th>Application</th><th>Requests</th><th>Avg response</th></tr>
+						</thead>
+						<wo:repetition list="$appTotals" item="$currentTotal">
+							<tr>
+								<td><wo:str value="$currentTotal.applicationName" /></td>
+								<td><wo:str value="$currentTotal.requests" /></td>
+								<td><wo:str value="$currentTotal.averageResponseMs" />ms</td>
+							</tr>
+						</wo:repetition>
+					</table>
+				</wo:if>
+			</div>
+		</div>
 	</div>
 	<div class="row">
 		<div class="col-12">
 			<div class="card mb-3">
 				<div class="card-header">
-					<h3>Configuration</h3>
-					<div class="card-subtitle">Every value the server runs with — including the currently unmodifiable "sensible defaults". "Configurable: not yet" doubles as the to-do list for the config surface.</div>
+					<h3>Requests per minute, by application — last hour</h3>
 				</div>
-				<table class="table table-sm mb-0">
-					<thead>
-						<tr>
-							<th>Setting</th>
-							<th>Value</th>
-							<th>Source</th>
-							<th>Configurable</th>
-						</tr>
-					</thead>
-					<wo:repetition list="$settingGroups" item="$currentGroup">
-						<tr class="table-active">
-							<th colspan="4"><wo:str value="$currentGroup.name" /></th>
-						</tr>
-						<wo:repetition list="$currentGroup.rows" item="$currentSetting">
-							<tr>
-								<td><wo:str value="$currentSetting.name" /></td>
-								<td><code><wo:str value="$currentSetting.value" /></code></td>
-								<td class="text-secondary"><wo:str value="$currentSetting.source" /></td>
-								<td><wo:str value="$currentSetting.configurable" /></td>
-							</tr>
-						</wo:repetition>
-					</wo:repetition>
-				</table>
+				<div class="card-body">
+					<div id="traffic-chart" style="height: 300px;"></div>
+				</div>
 			</div>
 		</div>
 	</div>
+	<wo:script filename="echarts/echarts.min.js" />
+	<script>
+		fetch('/stats.json')
+			.then(function(r) { return r.json(); })
+			.then(function(data) {
+				var apps = Object.keys(data.requestSeries);
+				var chart = echarts.init(document.getElementById('traffic-chart'));
+				chart.setOption({
+					tooltip: { trigger: 'axis' },
+					legend: { data: apps },
+					grid: { left: 40, right: 16, top: 32, bottom: 24 },
+					xAxis: { type: 'category', boundaryGap: false, data: data.minuteLabels },
+					yAxis: { type: 'value', minInterval: 1 },
+					series: apps.map(function(app) {
+						return {
+							name: app,
+							type: 'line',
+							stack: 'requests',
+							areaStyle: {},
+							showSymbol: false,
+							emphasis: { focus: 'series' },
+							data: data.requestSeries[app]
+						};
+					})
+				});
+				window.addEventListener('resize', function() { chart.resize(); });
+			});
+	</script>
 </wo:MDLook>

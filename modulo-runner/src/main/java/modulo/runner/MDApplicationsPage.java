@@ -10,12 +10,12 @@ import ng.appserver.NGApplication;
 import ng.appserver.NGContext;
 import ng.appserver.templating.NGComponent;
 
-public class MDAdaptorPage extends NGComponent {
+public class MDApplicationsPage extends NGComponent {
 
 	public App currentApplication;
 	public Instance currentInstance;
 
-	public MDAdaptorPage( NGContext context ) {
+	public MDApplicationsPage( NGContext context ) {
 		super( context );
 	}
 
@@ -49,5 +49,14 @@ public class MDAdaptorPage extends NGComponent {
 	 */
 	public boolean currentInstanceDead() {
 		return modulo().instanceDead( currentApplication.name(), currentInstance.id() );
+	}
+
+	public boolean currentInstanceHealthy() {
+		return !currentInstanceDead() && !currentInstanceRefusing();
+	}
+
+	public String currentInstanceCount() {
+		final int count = currentApplication.instances().size();
+		return count == 1 ? "1 instance" : count + " instances";
 	}
 }

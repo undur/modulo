@@ -142,6 +142,9 @@ public class Modulo {
 	 */
 	private final EventLog _events = new EventLog( EVENT_BUFFER_CAPACITY );
 
+	/** Per-application request counts and response times, minute-bucketed — feeds the admin dashboard. */
+	private final modulo.stats.RequestStats _requestStats = new modulo.stats.RequestStats();
+
 	/** The proxy handler in use, kept so the admin UI can read the live proxy-client settings. */
 	private ModuloProxy _proxy;
 
@@ -272,7 +275,7 @@ public class Modulo {
 		final ServerConnector connector = new ServerConnector( server, connectionFactory );
 		connector.setPort( _port );
 		server.addConnector( connector );
-		_proxy = new ModuloProxy( rewriteURIFunction(), _errorHandling, _events, _refusalObserver );
+		_proxy = new ModuloProxy( rewriteURIFunction(), _errorHandling, _events, _refusalObserver, _requestStats );
 		server.setHandler( _proxy );
 		server.setErrorHandler( new ModuloProxy.ModuloErrorHandler( _errorHandling ) );
 
@@ -332,7 +335,7 @@ public class Modulo {
 				_h3FleetStore,
 				fleetSite == null ? null : Set.copyOf( fleetSite.allHostnames() ),
 				config.accessLogDir(),
-				_proxy = new ModuloProxy( rewriteURIFunction(), _errorHandling, _events, _refusalObserver ),
+				_proxy = new ModuloProxy( rewriteURIFunction(), _errorHandling, _events, _refusalObserver, _requestStats ),
 				new ModuloProxy.ModuloErrorHandler( _errorHandling ) );
 		_frontend.start();
 
@@ -561,6 +564,13 @@ public class Modulo {
 	 */
 	public EventLog events() {
 		return _events;
+	}
+
+	/**
+	 * @return Per-application request statistics for the admin dashboard
+	 */
+	public modulo.stats.RequestStats requestStats() {
+		return _requestStats;
 	}
 
 	/**

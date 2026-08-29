@@ -1,0 +1,49 @@
+<wo:MDLook>
+	<div class="row">
+		<wo:repetition list="$applications" item="$currentApplication">
+			<div class="col-lg-4 col-md-6 col-sm-12">
+				<div class="card mb-3">
+					<div class="card-header d-flex justify-content-between align-items-center">
+						<h3 class="card-title mb-0"><wo:str value="$currentApplication.name" /></h3>
+						<span class="text-secondary"><wo:str value="$currentInstanceCount" /></span>
+					</div>
+					<table class="table table-sm card-table mb-0">
+						<thead>
+							<tr>
+								<th>Instance</th>
+								<th>Host</th>
+								<th>Port</th>
+								<th>Status</th>
+							</tr>
+						</thead>
+						<wo:repetition list="$currentApplication.instances" item="$currentInstance">
+							<tr>
+								<td><wo:str value="$currentInstance.id" /></td>
+								<td class="text-secondary"><wo:str value="$currentInstance.host" /></td>
+								<td><wo:str value="$currentInstance.port" /></td>
+								<td>
+									<wo:if condition="$currentInstanceDead">
+										<span class="badge bg-red-lt">unreachable</span>
+									</wo:if>
+									<wo:if condition="$currentInstanceRefusing">
+										<span class="badge bg-orange-lt">refusing</span>
+									</wo:if>
+									<wo:if condition="$currentInstanceHealthy">
+										<span class="badge bg-green-lt">ok</span>
+									</wo:if>
+								</td>
+							</tr>
+						</wo:repetition>
+					</table>
+				</div>
+			</div>
+		</wo:repetition>
+	</div>
+	<div class="row">
+		<div class="col-12">
+			<div class="mb-3">
+				<wo:link action="$reloadAdaptorConfig" class="btn">Reload adaptor config</wo:link>
+			</div>
+		</div>
+	</div>
+</wo:MDLook>
