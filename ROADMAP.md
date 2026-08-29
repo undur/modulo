@@ -161,14 +161,14 @@ How it works:
   site's configured hostnames (alias added). Failures are logged
   loudly and retried; the site keeps serving its current cert.
 
+In production since 2026-08-28: the whole hz1 fleet (22 sites) runs on
+native ACME; certbot and Apache are retired there.
+
 Still to come:
 
 - ACME DNS-01 for wildcards and where HTTP-01 is impractical
 - Renewal failure observability beyond logs — ties into the metrics/
   expiry-surfacing work in iteration 6+
-- End-to-end verification against Let's Encrypt staging, then
-  per-site production cutover (flip a site's `tls` to omitted/acme,
-  drop its certbot renewal)
 
 (Issues: TBD, parent #2)
 
@@ -190,6 +190,46 @@ they fit into related work, or when they become blockers:
   the first instance.
 - **Metrics endpoint and basic observability.** Health/readiness probes,
   cert expiry surfaces, renewal failure alerts.
+- **Ship the operational skeleton.** systemd unit templates, the
+  `/opt/webobjects/{apps,conf,log}` layout, an install script — the
+  knowledge a newcomer currently can't get without an existing
+  installation to copy from. Surfaced by the first deployment done by
+  someone other than the author. Interim step toward iteration 7.
+
+### Iteration 7 — Single-service deployments: modulo-managed app lifecycle
+
+Setting up a simple single-server deployment today means installing
+and operating three services — wotaskd, JavaMonitor, and modulo. For
+that case, the trio should collapse to one.
+
+The resolution (decided 2026-08-29): **don't host the apps — absorb
+the functionality.** Literally embedding wotaskd/JavaMonitor in
+modulo's JVM is blocked by WO's one-WOApplication-per-JVM design and
+would couple the proxy's restart cycle to app supervision. But the
+slice of their functionality a single server actually needs is small:
+launch app processes, assign ports, health-check, restart on death,
+feed the topology to the proxy. Modulo re-implements that natively,
+configured from the sites config — an `apps` declaration alongside
+`sites`:
+
+```json
+{ "sites": [ { "hostnames": [ "www.example.com" ], "app": "MyApp" } ],
+  "apps":  [ { "name": "MyApp", "path": "/opt/apps/MyApp.woa",
+               "instances": 1, "port": 2001, "autoRestart": true } ] }
+```
+
+One service, one config file; SiteConfig.xml and JavaMonitor become
+things a newcomer never meets. In-process supervision also removes the
+startup race (modulo knows when an instance is up instead of polling
+wotaskd every 10 seconds). The wotaskd adaptor-config source remains
+as the fleet-scale mode — this is an additional adaptor-config
+source, not a replacement (the `Modulo.java` FIXME about holding
+multiple adaptor configuration sources is exactly this).
+
+Design work to take up when this starts: process supervision model
+(restart backoff, graceful stop), port allocation, instance health
+checks, log capture/rotation for supervised apps, and how `woinst`
+multi-instance routing interacts with it.
 
 ---
 
