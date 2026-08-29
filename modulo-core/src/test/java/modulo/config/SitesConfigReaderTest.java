@@ -184,4 +184,63 @@ class SitesConfigReaderTest {
 	void rejectsMalformedJson() {
 		assertThrows( SitesConfigException.class, () -> parse( "{ \"sites\": [ oops" ) );
 	}
+
+	@Test
+	void parsesRewrites() {
+		final SitesConfig config = parse( """
+				{ "sites": [ {
+				  "hostnames": [ "www.example" ],
+				  "app": "App",
+				  "tls": { "mode": "manual", "cert": "/c", "key": "/k" },
+				  "rewrites": [
+				    { "match": "^/$", "to": "/Apps/WebObjects/App.woa/wa/default" },
+				    { "match": "^/x/(.*)$", "to": "/Apps/WebObjects/App.woa/wa/x?id=$1", "appendQuery": true, "encodeCaptures": true },
+				    { "match": "^/gone$", "to": "https://elsewhere.example/", "redirect": "permanent" }
+				  ]
+				} ] }
+				""" );
+
+		final List<modulo.rewrite.RewriteRule> rules = config.sites().getFirst().rewrites();
+		assertEquals( 3, rules.size() );
+		assertEquals( modulo.rewrite.RewriteRule.Redirect.NONE, rules.get( 0 ).redirect() );
+		assertTrue( rules.get( 1 ).appendQuery() );
+		assertTrue( rules.get( 1 ).encodeCaptures() );
+		assertEquals( modulo.rewrite.RewriteRule.Redirect.PERMANENT, rules.get( 2 ).redirect() );
+
+		final Map<String, List<modulo.rewrite.RewriteRule>> byHost = config.hostToRewrites();
+		assertEquals( rules, byHost.get( "www.example" ) );
+	}
+
+	@Test
+	void siteWithoutRewritesGetsEmptyList() {
+		final SitesConfig config = parse( """
+				{ "sites": [ { "hostnames": [ "www.example" ], "tls": { "mode": "manual", "cert": "/c", "key": "/k" } } ] }
+				""" );
+		assertTrue( config.sites().getFirst().rewrites().isEmpty() );
+		assertTrue( config.hostToRewrites().isEmpty() );
+	}
+
+	@Test
+	void rejectsInvalidRewriteRegex() {
+		assertThrows( SitesConfigException.class, () -> parse( """
+				{ "sites": [ { "hostnames": [ "www.example" ], "tls": { "mode": "manual", "cert": "/c", "key": "/k" },
+				  "rewrites": [ { "match": "^/([bad$", "to": "/x" } ] } ] }
+				""" ) );
+	}
+
+	@Test
+	void rejectsUnknownRedirectValue() {
+		assertThrows( SitesConfigException.class, () -> parse( """
+				{ "sites": [ { "hostnames": [ "www.example" ], "tls": { "mode": "manual", "cert": "/c", "key": "/k" },
+				  "rewrites": [ { "match": "^/$", "to": "/x", "redirect": "sometimes" } ] } ] }
+				""" ) );
+	}
+
+	@Test
+	void rejectsCaptureReferenceBeyondGroupCount() {
+		assertThrows( SitesConfigException.class, () -> parse( """
+				{ "sites": [ { "hostnames": [ "www.example" ], "tls": { "mode": "manual", "cert": "/c", "key": "/k" },
+				  "rewrites": [ { "match": "^/(.*)$", "to": "/x?a=$1&b=$2" } ] } ] }
+				""" ) );
+	}
 }

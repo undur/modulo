@@ -36,10 +36,15 @@ public record SitesConfig( List<ConfiguredSite> sites, AcmeSettings acme ) {
 	 * certificates modulo itself obtains and renews; their cert/key paths
 	 * point into the ACME storage directory.
 	 */
-	public record ConfiguredSite( Site site, String app, boolean acmeManaged ) {
+	public record ConfiguredSite( Site site, String app, boolean acmeManaged, List<modulo.rewrite.RewriteRule> rewrites ) {
 
 		public ConfiguredSite {
 			Objects.requireNonNull( site, "site" );
+			rewrites = rewrites == null ? List.of() : List.copyOf( rewrites );
+		}
+
+		public ConfiguredSite( final Site site, final String app, final boolean acmeManaged ) {
+			this( site, app, acmeManaged, List.of() );
 		}
 	}
 
@@ -69,6 +74,24 @@ public record SitesConfig( List<ConfiguredSite> sites, AcmeSettings acme ) {
 			if( configuredSite.app() != null ) {
 				for( final String hostname : configuredSite.site().allHostnames() ) {
 					map.put( hostname, configuredSite.app() );
+				}
+			}
+		}
+
+		return Map.copyOf( map );
+	}
+
+	/**
+	 * @return hostname → the site's rewrite rules, for every hostname of
+	 *         every site that has rules. Hostnames are lowercase.
+	 */
+	public Map<String, List<modulo.rewrite.RewriteRule>> hostToRewrites() {
+		final Map<String, List<modulo.rewrite.RewriteRule>> map = new HashMap<>();
+
+		for( final ConfiguredSite configuredSite : sites ) {
+			if( !configuredSite.rewrites().isEmpty() ) {
+				for( final String hostname : configuredSite.site().allHostnames() ) {
+					map.put( hostname, configuredSite.rewrites() );
 				}
 			}
 		}

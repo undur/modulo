@@ -124,6 +124,12 @@ public class Modulo {
 	private Map<String, String> _domainToAppMap;
 
 	/**
+	 * Hostname → the site's rewrite rules, for sites that have any. Applied
+	 * to non-adaptor-URL requests before routing. Empty in plain-proxy mode.
+	 */
+	private Map<String, List<modulo.rewrite.RewriteRule>> _hostToRewrites = Map.of();
+
+	/**
 	 * The parsed sites config when the front-end is active, null in
 	 * plain-proxy mode. Exposed for the overview page.
 	 */
@@ -298,6 +304,7 @@ public class Modulo {
 		final SitesConfig sitesConfig = SitesConfigReader.read( config.sitesFile() );
 		_sitesConfig = sitesConfig;
 		_domainToAppMap = sitesConfig.domainToAppMap();
+		_hostToRewrites = sitesConfig.hostToRewrites();
 		final List<Site> sites = sitesConfig.frontendSites();
 		logger.info( "Front-end configured with {} site(s) from {}", sites.size(), config.sitesFile() );
 
@@ -430,6 +437,7 @@ public class Modulo {
 
 		_sitesConfig = newConfig;
 		_domainToAppMap = newConfig.domainToAppMap();
+		_hostToRewrites = newConfig.hostToRewrites();
 
 		logUnmappedDomains( sites );
 		_acmeManager.checkNow();
@@ -757,15 +765,18 @@ public class Modulo {
 	 */
 	public Function<Request, HttpURI> rewriteURIFunction() {
 		return request -> {
-			final HttpURI originalURI = request.getHttpURI();
+			// Per-site rewrite rules map friendly URLs into adaptor URL space
+			// before routing; a redirect-type rule surfaces as an exception the
+			// proxy handler answers with a 301/302 instead of proxying.
+			final HttpURI routingURI = applySiteRewrites( request.getHttpURI() );
 
 			final RequestTarget target;
 			try {
-				target = targetFromURI( originalURI, this::appForHost, this::isConfiguredSiteHost );
+				target = targetFromURI( routingURI, this::appForHost, this::isConfiguredSiteHost );
 			}
 			catch( final ProxyRoutingException e ) {
 				if( e.condition() == ErrorCondition.UNKNOWN_HOST ) {
-					_unknownHosts.record( originalURI.getHost() );
+					_unknownHosts.record( routingURI.getHost() );
 				}
 				throw e;
 			}
@@ -824,7 +835,7 @@ public class Modulo {
 
 				if( selection.fellBack() ) {
 					logger.warn( "Instance {} of {} is no longer registered — rerouting to instance {}", requestedInstance, application.name(), selection.instance().id() );
-					_events.add( Event.Severity.WARN, "instance-rerouted", originalURI.getHost(), application.name(),
+					_events.add( Event.Severity.WARN, "instance-rerouted", routingURI.getHost(), application.name(),
 							"Pinned instance %d is gone; request rerouted to instance %d (session lost)".formatted( requestedInstance, selection.instance().id() ) );
 				}
 
@@ -849,15 +860,53 @@ public class Modulo {
 			final int port = targetInstance.port();
 
 			final HttpURI.Mutable targetURI = HttpURI
-					.build( originalURI )
+					.build( routingURI )
 					.host( hostName )
 					.scheme( HttpScheme.HTTP )
 					.port( port );
 
 			// Per-request logging belongs in the access log — this is debug-only tracing
-			logger.debug( "Forwarding {} -> {}", originalURI, targetURI );
+			logger.debug( "Forwarding {} -> {}", routingURI, targetURI );
 
 			return targetURI;
+		};
+	}
+
+	/**
+	 * Applies the site's rewrite rules (if any) to the given request URI.
+	 * Paths already inside the adaptor URL space pass untouched — rewrites
+	 * exist to map friendly URLs INTO it, so app-generated URLs can't be
+	 * re-rewritten and a catch-all rule can't loop.
+	 *
+	 * @return The URI to route on: rewritten, or the original when no rule
+	 *         matched
+	 * @throws modulo.rewrite.RewriteRedirectException when a redirect-type
+	 *             rule matches
+	 */
+	private HttpURI applySiteRewrites( final HttpURI uri ) {
+		final String host = uri.getHost();
+		final String path = uri.getPath();
+
+		if( host == null || path == null || path.startsWith( ADAPTOR_URL ) ) {
+			return uri;
+		}
+
+		final List<modulo.rewrite.RewriteRule> rules = _hostToRewrites.get( host.toLowerCase( java.util.Locale.ROOT ) );
+
+		if( rules == null ) {
+			return uri;
+		}
+
+		final modulo.rewrite.RewriteRule.Result result = modulo.rewrite.RewriteRule.firstMatch( rules, path, uri.getQuery() );
+
+		return switch( result ) {
+			case null -> uri;
+			case modulo.rewrite.RewriteRule.Rewritten rewritten -> {
+				final HttpURI rewrittenURI = HttpURI.build( uri ).path( rewritten.path() ).query( rewritten.query() ).asImmutable();
+				logger.debug( "Rewrote {} -> {}", uri, rewrittenURI );
+				yield rewrittenURI;
+			}
+			case modulo.rewrite.RewriteRule.Redirected redirected -> throw new modulo.rewrite.RewriteRedirectException( redirected.location(), redirected.permanent() );
 		};
 	}
 

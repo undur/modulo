@@ -109,6 +109,18 @@ class ModuloProxy extends ProxyHandler.Reverse {
 			_errorHandling.respond( e.condition(), clientToProxyRequest, proxyToClientResponse, proxyToClientCallback );
 			return true;
 		}
+		catch( final modulo.rewrite.RewriteRedirectException e ) {
+			// A redirect-type rewrite rule matched — answer the client
+			// directly instead of proxying
+			org.eclipse.jetty.server.Response.sendRedirect(
+					clientToProxyRequest,
+					proxyToClientResponse,
+					proxyToClientCallback,
+					e.permanent() ? org.eclipse.jetty.http.HttpStatus.MOVED_PERMANENTLY_301 : org.eclipse.jetty.http.HttpStatus.FOUND_302,
+					e.location(),
+					true );
+			return true;
+		}
 	}
 
 	@Override

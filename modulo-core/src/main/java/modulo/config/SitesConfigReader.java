@@ -19,9 +19,13 @@ import tools.jackson.core.json.JsonReadFeature;
 import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
+
 import modulo.config.SitesConfig.ConfiguredSite;
 import modulo.frontend.site.Site;
 import modulo.frontend.tls.acme.AcmeSettings;
+import modulo.rewrite.RewriteRule;
 
 /**
  * Reads modulo's native sites config — a single JSON file:
@@ -56,6 +60,27 @@ import modulo.frontend.tls.acme.AcmeSettings;
  * manages the certificate via ACME — this requires the top-level {@code acme}
  * block, and the site's cert/key paths are derived inside the ACME storage
  * directory. {@code "mode": "manual"} takes explicit PEM paths instead.
+ *
+ * A site may carry {@code "rewrites"} — an ordered list of URL rewrite rules
+ * tried first-match-wins against the request path (only for paths outside the
+ * adaptor URL space):
+ *
+ * <pre>
+ * "rewrites": [
+ *   { "match": "^/$", "to": "/Apps/WebObjects/Strimillinn.woa/wa/default" },
+ *   { "match": "^/app/([^/]+)/receipts$", "to": "/Apps/WebObjects/Strimillinn.woa/wa/AppAction/receipts?token=$1" },
+ *   { "match": "^/policy$", "to": "/privacy", "redirect": "permanent" }
+ * ]
+ * </pre>
+ *
+ * {@code match} is a Java regex (unanchored — anchor with ^ and $), {@code to}
+ * the substitution with {@code $1}–{@code $9} capture references. Without
+ * {@code redirect} the rule rewrites internally and the request proceeds to
+ * the site's app; {@code "redirect": "temporary"|"permanent"} answers 302/301
+ * instead (paths and absolute URLs both work as targets). Optional booleans:
+ * {@code appendQuery} (merge the original query string after the target's,
+ * Apache's QSA) and {@code encodeCaptures} (URL-encode substituted captures,
+ * Apache's B). See {@link modulo.rewrite.RewriteRule} for full semantics.
  *
  * Sites may also live in separate files: the main file's {@code "include"}
  * lists paths or glob patterns (e.g. {@code "/rebbi/*&#47;conf/site.json"};
@@ -93,9 +118,11 @@ public class SitesConfigReader {
 
 	record Acme( String email, String directory, String storage ) {}
 
-	record SiteEntry( List<String> hostnames, String app, Tls tls, Boolean canonicalRedirect, Boolean httpsRedirect ) {}
+	record SiteEntry( List<String> hostnames, String app, Tls tls, Boolean canonicalRedirect, Boolean httpsRedirect, List<RewriteEntry> rewrites ) {}
 
 	record Tls( String mode, String cert, String key ) {}
+
+	record RewriteEntry( String match, String to, String redirect, Boolean appendQuery, Boolean encodeCaptures ) {}
 
 	public static SitesConfig read( final Path file ) throws IOException {
 		final Root root = parseRoot( Files.readString( file, StandardCharsets.UTF_8 ), file.toString() );
@@ -277,6 +304,57 @@ public class SitesConfigReader {
 				entry.canonicalRedirect() == null || entry.canonicalRedirect(),
 				entry.httpsRedirect() == null || entry.httpsRedirect() );
 
-		return new ConfiguredSite( site, entry.app(), acmeManaged );
+		return new ConfiguredSite( site, entry.app(), acmeManaged, toRewriteRules( entry.rewrites(), context ) );
+	}
+
+	private static List<RewriteRule> toRewriteRules( final List<RewriteEntry> entries, final String siteContext ) {
+
+		if( entries == null || entries.isEmpty() ) {
+			return List.of();
+		}
+
+		final List<RewriteRule> rules = new ArrayList<>( entries.size() );
+
+		for( int i = 0; i < entries.size(); i++ ) {
+			final RewriteEntry entry = entries.get( i );
+			final String context = "rewrite #%d of %s".formatted( i + 1, siteContext );
+
+			if( entry == null || entry.match() == null || entry.match().isBlank() ) {
+				throw new SitesConfigException( "%s needs a \"match\" regex".formatted( context ) );
+			}
+			if( entry.to() == null || entry.to().isBlank() ) {
+				throw new SitesConfigException( "%s needs a \"to\" target".formatted( context ) );
+			}
+
+			final Pattern pattern;
+			try {
+				pattern = Pattern.compile( entry.match() );
+			}
+			catch( final PatternSyntaxException e ) {
+				throw new SitesConfigException( "%s has an invalid \"match\" regex: %s".formatted( context, e.getMessage() ), e );
+			}
+
+			final RewriteRule.Redirect redirect = switch( entry.redirect() == null ? "" : entry.redirect() ) {
+				case "" -> RewriteRule.Redirect.NONE;
+				case "temporary" -> RewriteRule.Redirect.TEMPORARY;
+				case "permanent" -> RewriteRule.Redirect.PERMANENT;
+				default -> throw new SitesConfigException( "%s has unknown \"redirect\" value \"%s\" (valid: \"temporary\", \"permanent\", or omit for an internal rewrite)".formatted( context, entry.redirect() ) );
+			};
+
+			final RewriteRule rule = new RewriteRule(
+					pattern,
+					entry.to(),
+					redirect,
+					entry.appendQuery() != null && entry.appendQuery(),
+					entry.encodeCaptures() != null && entry.encodeCaptures() );
+
+			if( rule.highestReferencedGroup() > pattern.matcher( "" ).groupCount() ) {
+				throw new SitesConfigException( "%s references capture group $%d but \"match\" only has %d group(s)".formatted( context, rule.highestReferencedGroup(), pattern.matcher( "" ).groupCount() ) );
+			}
+
+			rules.add( rule );
+		}
+
+		return List.copyOf( rules );
 	}
 }

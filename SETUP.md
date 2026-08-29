@@ -269,6 +269,40 @@ warning; matches load in sorted path order.
 | `tls` | no | **Omitted = ACME**: modulo obtains and renews the certificate. Or `{ "mode": "manual", "cert": "/path/fullchain.pem", "key": "/path/privkey.pem" }` for certs you manage yourself. |
 | `canonicalRedirect` | no (`true`) | 301 alias hostnames → canonical hostname. |
 | `httpsRedirect` | no (`true`) | 301 plain HTTP → HTTPS. |
+| `rewrites` | no | Ordered URL rewrite rules — see below. |
+
+**Rewrite rules** map friendly URLs into adaptor URL space (or answer
+with a redirect) — modulo's replacement for Apache `RewriteRule`
+directives:
+
+```json
+{
+  "hostnames": [ "www.example.com" ],
+  "app": "MyApp",
+  "rewrites": [
+    { "match": "^/$", "to": "/Apps/WebObjects/MyApp.woa/wa/default" },
+    { "match": "^/things/([^/]+)$", "to": "/Apps/WebObjects/MyApp.woa/wa/thing?id=$1" },
+    { "match": "^/old-name$", "to": "/new-name", "redirect": "permanent" },
+    { "match": "^(.*)$", "to": "/Apps/WebObjects/MyApp.woa/wa/RouteAction/handler?url=$1", "appendQuery": true }
+  ]
+}
+```
+
+| Field | Required | Meaning |
+|---|---|---|
+| `match` | yes | Java regex, matched against the request path. Unanchored — anchor with `^` and `$`. |
+| `to` | yes | Substitution target; `$1`–`$9` insert capture groups (`$$` for a literal `$`). A path for internal rewrites; a path or absolute URL for redirects. |
+| `redirect` | no | Omitted = internal rewrite (the request proceeds to the site's `app` under the new path). `"temporary"` = 302, `"permanent"` = 301. |
+| `appendQuery` | no (`false`) | When `to` has its own query part, also append the request's original query after it (Apache's `QSA`). Without it, a target query replaces the original; a target *without* a query always keeps the original. |
+| `encodeCaptures` | no (`false`) | URL-encode each substituted capture (Apache's `B`) — for captures that become query parameter values. |
+
+Rules are tried in order; the **first match wins** (Apache's `[L]`,
+always on). Rules only apply to paths *outside* the adaptor URL space —
+a request that is already `/Apps/WebObjects/...` routes untouched, so
+app-generated URLs bypass the rules and a catch-all `^(.*)$` can't
+loop. Invalid regexes, unknown `redirect` values and `$N` references
+beyond the pattern's group count are config errors (refused at
+startup/reload like any other).
 
 **Strictness is a feature.** Unknown fields (typos), duplicate
 hostnames (across all files, with both file names in the error), a
