@@ -58,6 +58,43 @@ class InstanceSelectorTest {
 	}
 
 	@Test
+	void refusingInstanceIsSkippedByRoundRobin() {
+		final InstanceSelector selector = new InstanceSelector();
+		assertTrue( selector.markRefusing( APP.name(), 2, java.time.Duration.ofMinutes( 1 ) ) );
+		assertTrue( selector.isRefusing( APP.name(), 2 ) );
+		// re-marking while already refusing is not a transition
+		assertFalse( selector.markRefusing( APP.name(), 2, java.time.Duration.ofMinutes( 1 ) ) );
+
+		final Set<Instance> picked = IntStream.range( 0, 10 ).mapToObj( i -> selector.select( APP, null ).instance() ).collect( Collectors.toSet() );
+		assertEquals( Set.of( ONE, THREE ), picked );
+	}
+
+	@Test
+	void pinnedRequestsStillReachRefusingInstance() {
+		final InstanceSelector selector = new InstanceSelector();
+		selector.markRefusing( APP.name(), 2, java.time.Duration.ofMinutes( 1 ) );
+		assertEquals( TWO, selector.select( APP, 2 ).instance() );
+	}
+
+	@Test
+	void allInstancesRefusingStillServes() {
+		final InstanceSelector selector = new InstanceSelector();
+		for( final Instance instance : APP.instances() ) {
+			selector.markRefusing( APP.name(), instance.id(), java.time.Duration.ofMinutes( 1 ) );
+		}
+		assertTrue( APP.instances().contains( selector.select( APP, null ).instance() ) );
+	}
+
+	@Test
+	void refusalExpires() {
+		final InstanceSelector selector = new InstanceSelector();
+		selector.markRefusing( APP.name(), 2, java.time.Duration.ZERO );
+		assertFalse( selector.isRefusing( APP.name(), 2 ) );
+		// and expired refusal counts as a transition when re-marked
+		assertTrue( selector.markRefusing( APP.name(), 2, java.time.Duration.ofMinutes( 1 ) ) );
+	}
+
+	@Test
 	void roundRobinCountersAreIndependentPerApp() {
 		final App other = new App( "Other", List.of( ONE, TWO ) );
 		final InstanceSelector selector = new InstanceSelector();

@@ -45,14 +45,9 @@ import modulo.woadaptorconfig.model.Instance;
 /**
  * A jetty-based reverse proxy
  *
- * FIXME: We're currently always targeting the first instance. Here's where a load balacing scheme might come in strong... // Hugi 2025-04-22
- * FIXME: currently only support one instance. Target instances based on the request URL and 'woinst' cookie // Hugi 2025-04-22
- * FIXME: We might want to gather some statistics and logging // Hugi 2025-04-22
- * FIXME: Add some nice error pages // Hugi 2025-04-22
- * FIXME: Target application based on domain // Hugi 2025-10-09
+ * FIXME: Statistics/profiling pages remain to be built (events + access logs exist) // Hugi 2025-04-22
  * FIXME: Shutdown/startup of an application in a related wotaskd should really trigger an adaptor reload // Hugi 2025-10-09
- * FIXME: Adaptor config needs to be manually updatable // Hugi 2025-04-22
- * FIXME: We're missing user configuration for ... everything // Hugi 2025-04-22
+ * FIXME: Load-balancing strategies beyond round-robin, health checks, draining — see roadmap // Hugi 2026-08-29
  */
 
 public class Modulo {
@@ -67,11 +62,17 @@ public class Modulo {
 	public static final Duration DEFAULT_CONFIG_RELOAD_DURATION = Duration.ofSeconds( 10 );
 
 	/**
-	 * Adaptor URL
-	 *
-	 * FIXME: Should be settable/configurable // Hugi 2025-10-09
+	 * The URL prefix identifying adaptor-style requests
+	 * ({@code /<prefix>/AppName.woa/...}). Settable via
+	 * {@code -Dmodulo.adaptor-url}; the deployed apps' own adaptor-URL
+	 * setting should match, since they generate URLs with it.
 	 */
-	public static final String ADAPTOR_URL = "/Apps/WebObjects/";
+	public static final String ADAPTOR_URL = normalizedAdaptorURL( System.getProperty( "modulo.adaptor-url", "/Apps/WebObjects/" ) );
+
+	private static String normalizedAdaptorURL( final String value ) {
+		String url = value.startsWith( "/" ) ? value : "/" + value;
+		return url.endsWith( "/" ) ? url : url + "/";
+	}
 
 	/**
 	 * Max worker threads for the plain proxy server. FIXME: Make configurable // 2026-08-29
@@ -255,7 +256,7 @@ public class Modulo {
 		final ServerConnector connector = new ServerConnector( server, connectionFactory );
 		connector.setPort( _port );
 		server.addConnector( connector );
-		_proxy = new ModuloProxy( rewriteURIFunction(), _errorHandling, _events );
+		_proxy = new ModuloProxy( rewriteURIFunction(), _errorHandling, _events, this::instanceRefusing );
 		server.setHandler( _proxy );
 		server.setErrorHandler( new ModuloProxy.ModuloErrorHandler( _errorHandling ) );
 
@@ -315,7 +316,7 @@ public class Modulo {
 				_h3FleetStore,
 				fleetSite == null ? null : Set.copyOf( fleetSite.allHostnames() ),
 				config.accessLogDir(),
-				_proxy = new ModuloProxy( rewriteURIFunction(), _errorHandling, _events ),
+				_proxy = new ModuloProxy( rewriteURIFunction(), _errorHandling, _events, this::instanceRefusing ),
 				new ModuloProxy.ModuloErrorHandler( _errorHandling ) );
 		_frontend.start();
 
@@ -555,8 +556,29 @@ public class Modulo {
 		return new AdaptorConfigParser( host, port, password ).fetchAdaptorConfig();
 	}
 
-	/** Selects which instance of an app serves each request (pinning + round-robin). */
+	/** Selects which instance of an app serves each request (pinning + round-robin + refusal avoidance). */
 	private final InstanceSelector _instanceSelector = new InstanceSelector();
+
+	/**
+	 * Invoked when an upstream response announces its instance is refusing
+	 * new sessions: mark it so round-robin steers new traffic elsewhere
+	 * (pinned session traffic keeps flowing so sessions drain), registering
+	 * an event on the transition.
+	 */
+	private void instanceRefusing( final String applicationName, final int instanceId, final int timeoutSeconds ) {
+		final boolean transition = _instanceSelector.markRefusing( applicationName, instanceId, Duration.ofSeconds( timeoutSeconds ) );
+		if( transition ) {
+			logger.info( "Instance {} of {} is refusing new sessions — steering new traffic to other instances", instanceId, applicationName );
+			_events.add( Event.Severity.INFO, "instance-refusing", null, applicationName, "Instance %d is refusing new sessions; new traffic steered elsewhere while its sessions drain".formatted( instanceId ) );
+		}
+	}
+
+	/**
+	 * @return True if the given instance is currently marked refusing new sessions — for the admin UI
+	 */
+	public boolean instanceRefusing( final String applicationName, final int instanceId ) {
+		return _instanceSelector.isRefusing( applicationName, instanceId );
+	}
 
 	/**
 	 * @return A Function that generates the instance URI to target
@@ -592,6 +614,11 @@ public class Modulo {
 			}
 
 			final Instance targetInstance = selection.instance();
+
+			// Record the routing decision so response observers (refusal
+			// detection) can attribute upstream headers to the right instance
+			request.setAttribute( ModuloProxy.TARGET_APP_ATTRIBUTE, application.name() );
+			request.setAttribute( ModuloProxy.TARGET_INSTANCE_ATTRIBUTE, targetInstance.id() );
 
 			final String hostName = targetInstance.host();
 			final int port = targetInstance.port();

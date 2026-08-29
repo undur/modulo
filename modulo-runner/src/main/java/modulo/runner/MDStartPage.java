@@ -85,10 +85,17 @@ public class MDStartPage extends NGComponent {
 		final var acme = modulo.sitesConfig() == null ? null : modulo.sitesConfig().acme();
 		final org.eclipse.jetty.client.HttpClient proxyClient = modulo.proxyHttpClient();
 
+		// Adaptor / wotaskd
+		if( !Modulo.isTesting() ) {
+			rows.add( new SettingRow( "Adaptor", "wotaskd host", Modulo.wotaskdHost(), "-Dmodulo.wotaskd.host", "yes" ) );
+			rows.add( new SettingRow( "Adaptor", "wotaskd port", String.valueOf( Modulo.wotaskdPort() ), "-Dmodulo.wotaskd.port", "yes" ) );
+			rows.add( new SettingRow( "Adaptor", "wotaskd password", "set", "-Dmodulo.wotaskd.password", "yes" ) );
+		}
+		rows.add( new SettingRow( "Adaptor", "Adaptor URL prefix", Modulo.ADAPTOR_URL, "-Dmodulo.adaptor-url", "yes" ) );
+		rows.add( new SettingRow( "Adaptor", "Adaptor config reload interval", humanDuration( Modulo.DEFAULT_CONFIG_RELOAD_DURATION ), "hardcoded", "not yet" ) );
+
 		// Proxy
 		rows.add( new SettingRow( "Proxy", "Plain proxy port", String.valueOf( Config.MODULO_PROXY_PORT ), "-Dmodulo.proxy-port", "yes" ) );
-		rows.add( new SettingRow( "Proxy", "Adaptor URL prefix", Modulo.ADAPTOR_URL, "hardcoded", "not yet" ) );
-		rows.add( new SettingRow( "Proxy", "Adaptor config reload interval", humanDuration( Modulo.DEFAULT_CONFIG_RELOAD_DURATION ), "hardcoded", "not yet" ) );
 		rows.add( new SettingRow( "Proxy", "Instance selection", "URL pin → woinst cookie → round-robin", "hardcoded behavior", "strategy not yet (round-robin only)" ) );
 		rows.add( new SettingRow( "Proxy", "Worker threads, max (plain)", String.valueOf( Modulo.PLAIN_PROXY_MAX_THREADS ), "hardcoded", "not yet" ) );
 		if( proxyClient != null ) {
@@ -129,6 +136,7 @@ public class MDStartPage extends NGComponent {
 		rows.add( new SettingRow( "ACME", "Key type", "EC secp256r1", "hardcoded", "not yet" ) );
 
 		// Admin
+		rows.add( new SettingRow( "Admin", "modulo.conf location", System.getProperty( "modulo.config-file", "/opt/webobjects/modulo.conf" ), "-Dmodulo.config-file", "yes" ) );
 		rows.add( new SettingRow( "Admin", "Admin password", ((Application)NGApplication.application()).adminPasswordConfigured() ? "set" : "not set", "modulo.conf", "yes" ) );
 		rows.add( new SettingRow( "Admin", "Event buffer capacity", String.valueOf( Modulo.EVENT_BUFFER_CAPACITY ), "hardcoded", "not yet" ) );
 

@@ -14,7 +14,12 @@
 							<tr>
 								<td><wo:str value="$currentInstance.id" /></td>
 								<td><wo:str value="$currentInstance.host" /></td>
-								<td><wo:str value="$currentInstance.port" /></td>
+								<td>
+									<wo:str value="$currentInstance.port" />
+									<wo:if condition="$currentInstanceRefusing">
+										<span class="badge bg-orange-lt">refusing new sessions</span>
+									</wo:if>
+								</td>
 							</tr>
 						</wo:repetition>
 					</wo:repetition>

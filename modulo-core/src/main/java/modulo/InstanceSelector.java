@@ -1,5 +1,7 @@
 package modulo;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -28,6 +30,9 @@ class InstanceSelector {
 
 	private final Map<String, AtomicInteger> _roundRobinCounters = new ConcurrentHashMap<>();
 
+	/** "app:instanceId" → the moment the instance's refusing-new-sessions state expires. */
+	private final Map<String, Instant> _refusingUntil = new ConcurrentHashMap<>();
+
 	/**
 	 * @param instance The chosen instance
 	 * @param fellBack True when a pinned instance was requested but is no
@@ -55,8 +60,41 @@ class InstanceSelector {
 	}
 
 	private Instance roundRobin( final App application ) {
-		final List<Instance> instances = application.instances();
+		// New traffic avoids instances currently refusing new sessions
+		// (graceful bounce: they keep serving their pinned sessions until
+		// those drain). If every instance is refusing, serve anyway — a
+		// reluctant instance beats an error page.
+		List<Instance> candidates = application.instances().stream()
+				.filter( instance -> !isRefusing( application.name(), instance.id() ) )
+				.toList();
+
+		if( candidates.isEmpty() ) {
+			candidates = application.instances();
+		}
+
 		final int counter = _roundRobinCounters.computeIfAbsent( application.name(), name -> new AtomicInteger() ).getAndIncrement();
-		return instances.get( Math.floorMod( counter, instances.size() ) );
+		return candidates.get( Math.floorMod( counter, candidates.size() ) );
+	}
+
+	/**
+	 * Marks an instance as refusing new sessions for [validity] — invoked when
+	 * an upstream response carries the refusal header.
+	 *
+	 * @return True when this is a transition (the instance wasn't already
+	 *         marked refusing) — so the caller can register an event once
+	 *         rather than per response
+	 */
+	boolean markRefusing( final String applicationName, final int instanceId, final Duration validity ) {
+		final Instant previous = _refusingUntil.put( key( applicationName, instanceId ), Instant.now().plus( validity ) );
+		return previous == null || previous.isBefore( Instant.now() );
+	}
+
+	boolean isRefusing( final String applicationName, final int instanceId ) {
+		final Instant until = _refusingUntil.get( key( applicationName, instanceId ) );
+		return until != null && until.isAfter( Instant.now() );
+	}
+
+	private static String key( final String applicationName, final int instanceId ) {
+		return applicationName + ":" + instanceId;
 	}
 }

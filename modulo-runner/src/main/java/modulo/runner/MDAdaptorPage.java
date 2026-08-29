@@ -36,4 +36,11 @@ public class MDAdaptorPage extends NGComponent {
 				.stream()
 				.toList();
 	}
+
+	/**
+	 * @return True if the instance currently being rendered is refusing new sessions
+	 */
+	public boolean currentInstanceRefusing() {
+		return modulo().instanceRefusing( currentApplication.name(), currentInstance.id() );
+	}
 }
