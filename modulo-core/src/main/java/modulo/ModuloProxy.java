@@ -96,8 +96,16 @@ class ModuloProxy extends ProxyHandler.Reverse {
 			return super.handle( clientToProxyRequest, proxyToClientResponse, proxyToClientCallback );
 		}
 		catch( final ProxyRoutingException e ) {
-			logger.info( "{} for {}{}: {}", e.condition(), clientToProxyRequest.getHttpURI().getHost(), clientToProxyRequest.getHttpURI().getPath(), e.getMessage() );
-			_eventLog.add( Event.Severity.WARN, e.condition().name(), clientToProxyRequest.getHttpURI().getHost(), null, e.getMessage() );
+			// Unknown hosts are scanner/spam noise: they belong in the access
+			// log's _unmatched file, not the operational event stream (which
+			// they once flooded 107:1 against the real signals)
+			if( e.condition() == ErrorCondition.UNKNOWN_HOST ) {
+				logger.debug( "{} for {}{}: {}", e.condition(), clientToProxyRequest.getHttpURI().getHost(), clientToProxyRequest.getHttpURI().getPath(), e.getMessage() );
+			}
+			else {
+				logger.info( "{} for {}{}: {}", e.condition(), clientToProxyRequest.getHttpURI().getHost(), clientToProxyRequest.getHttpURI().getPath(), e.getMessage() );
+				_eventLog.add( Event.Severity.WARN, e.condition().name(), clientToProxyRequest.getHttpURI().getHost(), null, e.getMessage() );
+			}
 			_errorHandling.respond( e.condition(), clientToProxyRequest, proxyToClientResponse, proxyToClientCallback );
 			return true;
 		}

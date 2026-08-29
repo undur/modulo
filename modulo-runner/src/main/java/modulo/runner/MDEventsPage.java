@@ -26,8 +26,22 @@ public class MDEventsPage extends NGComponent {
 
 	public record EventRow( String time, String severity, boolean isError, boolean isWarn, String kind, String scope, String message ) {}
 
+	public modulo.stats.HostTally.Entry currentUnknownHost;
+
 	public List<EventRow> events() {
 		return ((Application)NGApplication.application()).modulo().events().recent().stream().map( MDEventsPage::toRow ).toList();
+	}
+
+	/**
+	 * @return The most-hit unknown hostnames — spam mostly, but a forgotten
+	 *         alias shows up here as a name you recognize
+	 */
+	public List<modulo.stats.HostTally.Entry> unknownHosts() {
+		return ((Application)NGApplication.application()).modulo().unknownHosts().top( 20 );
+	}
+
+	public boolean hasUnknownHosts() {
+		return !((Application)NGApplication.application()).modulo().unknownHosts().isEmpty();
 	}
 
 	public boolean hasEvents() {

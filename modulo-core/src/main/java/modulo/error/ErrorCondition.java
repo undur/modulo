@@ -8,8 +8,16 @@ package modulo.error;
  */
 public enum ErrorCondition {
 
-	/** The request's hostname has no app configured (and isn't an adaptor URL). */
+	/** The request's hostname is a configured Site, but no app is mapped to it — an operational signal. */
 	NO_APP_FOR_HOST( 404, "Nothing here", "No application is configured to serve this address." ),
+
+	/**
+	 * The request's hostname isn't configured at all — scanners, stray DNS,
+	 * Host-header spam. Same response as NO_APP_FOR_HOST, but traffic noise
+	 * rather than an operational signal: it goes to the access log's
+	 * _unmatched file, not the event stream.
+	 */
+	UNKNOWN_HOST( 404, "Nothing here", "No application is configured to serve this address." ),
 
 	/** The site's app isn't in the adaptor config — down, or being restarted. */
 	APP_UNAVAILABLE( 503, "Temporarily unavailable", "The application serving this site is not available right now — it may be restarting. Please try again in a moment." ),

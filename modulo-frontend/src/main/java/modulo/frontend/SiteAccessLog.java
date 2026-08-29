@@ -28,11 +28,17 @@ import modulo.frontend.site.Site;
 /**
  * Per-site access logging: one log file per Site (keyed by canonical
  * hostname — alias traffic folds into the canonical file), daily rollover
- * with bounded retention, in combined log format plus request duration:
+ * with bounded retention, in combined log format with a leading virtual-host
+ * field plus request duration:
  *
  * <pre>
- * 1.2.3.4 - - [29/Aug/2026:11:22:33 +0000] "GET / HTTP/2" 200 5310 "-" "Mozilla/..." 12ms
+ * www.example.com 1.2.3.4 - - [29/Aug/2026:11:22:33 +0000] "GET / HTTP/2" 200 5310 "-" "Mozilla/..." 12ms
  * </pre>
+ *
+ * The vhost field shows which alias a request actually used, and — in the
+ * {@code _unmatched} file, where many hostnames aggregate — which unknown
+ * host the traffic was for (a forgotten alias looks very different from
+ * scanner spam once you can see the names).
  *
  * Requests for hostnames not in the site map (scanners hitting the bare IP,
  * requests during config gaps) go to {@code _unmatched.log} — visible, not
@@ -66,7 +72,8 @@ public class SiteAccessLog implements RequestLog {
 			final String fileKey = site != null ? site.primaryHostname() : UNMATCHED;
 
 			final long durationMs = TimeUnit.NANOSECONDS.toMillis( System.nanoTime() - request.getBeginNanoTime() );
-			final String line = "%s - - [%s] \"%s %s %s\" %d %d \"%s\" \"%s\" %dms".formatted(
+			final String line = "%s %s - - [%s] \"%s %s %s\" %d %d \"%s\" \"%s\" %dms".formatted(
+					host == null ? "-" : host,
 					Request.getRemoteAddr( request ),
 					CLF_TIME.format( Instant.ofEpochMilli( Request.getTimeStamp( request ) ) ),
 					request.getMethod(),

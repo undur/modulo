@@ -1,6 +1,6 @@
 <wo:MDLook>
 	<div class="row">
-		<div class="col-12">
+		<div class="col-lg-8 col-md-12">
 			<div class="card mb-3">
 				<div class="card-header">
 					<h3>Recent events</h3>
@@ -30,6 +30,33 @@
 								<td><wo:str value="$currentEvent.kind" /></td>
 								<td><wo:str value="$currentEvent.scope" /></td>
 								<td><wo:str value="$currentEvent.message" /></td>
+							</tr>
+						</wo:repetition>
+					</table>
+				</wo:if>
+			</div>
+		</div>
+		<div class="col-lg-4 col-md-12">
+			<div class="card mb-3">
+				<div class="card-header">
+					<h3>Unmatched hostnames</h3>
+				</div>
+				<wo:if condition="$hasUnknownHosts" negate="true">
+					<div class="card-body text-secondary">No requests for unconfigured hostnames since startup.</div>
+				</wo:if>
+				<wo:if condition="$hasUnknownHosts">
+					<div class="card-body py-2 text-secondary small">Requests for hostnames not in the sites config — mostly scanner noise, but a name you recognize here is probably an alias that should be mapped.</div>
+					<table class="table table-sm mb-0">
+						<thead>
+							<tr>
+								<th>Host</th>
+								<th class="text-end">Requests</th>
+							</tr>
+						</thead>
+						<wo:repetition list="$unknownHosts" item="$currentUnknownHost">
+							<tr>
+								<td class="text-break"><wo:str value="$currentUnknownHost.host" /></td>
+								<td class="text-end"><wo:str value="$currentUnknownHost.count" /></td>
 							</tr>
 						</wo:repetition>
 					</table>

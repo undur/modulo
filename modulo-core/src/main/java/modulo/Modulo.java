@@ -145,6 +145,13 @@ public class Modulo {
 	/** Per-application request counts and response times, minute-bucketed — feeds the admin dashboard. */
 	private final modulo.stats.RequestStats _requestStats = new modulo.stats.RequestStats();
 
+	/**
+	 * Requests for hostnames not in the sites config, tallied per host —
+	 * mostly scanner spam, but a forgotten alias shows up here too. The
+	 * aggregate view of what deliberately doesn't reach the event stream.
+	 */
+	private final modulo.stats.HostTally _unknownHosts = new modulo.stats.HostTally();
+
 	/** The proxy handler in use, kept so the admin UI can read the live proxy-client settings. */
 	private ModuloProxy _proxy;
 
@@ -453,6 +460,20 @@ public class Modulo {
 	}
 
 	/**
+	 * @return True if [host] is one of the sites config's hostnames — i.e.
+	 *         something the operator deliberately configured, as opposed to
+	 *         scanner/stray-DNS traffic
+	 */
+	private boolean isConfiguredSiteHost( final String host ) {
+		final SitesConfig sitesConfig = _sitesConfig;
+		if( sitesConfig == null || host == null ) {
+			return false;
+		}
+		final String lowercased = host.toLowerCase( Locale.ROOT );
+		return sitesConfig.frontendSites().stream().anyMatch( site -> site.allHostnames().contains( lowercased ) );
+	}
+
+	/**
 	 * Walks the configured sites at startup and warns about hostnames that
 	 * won't route correctly: hostnames with no app mapping, or hostnames
 	 * pointing at app names that aren't known to wotaskd.
@@ -604,6 +625,13 @@ public class Modulo {
 	}
 
 	/**
+	 * @return The unknown-host tally, for the admin UI
+	 */
+	public modulo.stats.HostTally unknownHosts() {
+		return _unknownHosts;
+	}
+
+	/**
 	 * @return The proxy → upstream HttpClient (for reading its live settings
 	 *         in the admin UI). Null before startup completes.
 	 */
@@ -731,7 +759,16 @@ public class Modulo {
 		return request -> {
 			final HttpURI originalURI = request.getHttpURI();
 
-			final RequestTarget target = targetFromURI( originalURI, this::appForHost );
+			final RequestTarget target;
+			try {
+				target = targetFromURI( originalURI, this::appForHost, this::isConfiguredSiteHost );
+			}
+			catch( final ProxyRoutingException e ) {
+				if( e.condition() == ErrorCondition.UNKNOWN_HOST ) {
+					_unknownHosts.record( originalURI.getHost() );
+				}
+				throw e;
+			}
 
 			App application = _adaptorConfig.application( target.applicationName() );
 
@@ -848,7 +885,7 @@ public class Modulo {
 	 * @param appForHost Resolves a hostname to the app serving it (null when unknown)
 	 * @return The application (and URL-pinned instance, if any) targeted by the given URI
 	 */
-	static RequestTarget targetFromURI( final HttpURI uri, final Function<String, String> appForHost ) {
+	static RequestTarget targetFromURI( final HttpURI uri, final Function<String, String> appForHost, final java.util.function.Predicate<String> isConfiguredSiteHost ) {
 
 		final String uriString = uri.getPath();
 
@@ -861,7 +898,13 @@ public class Modulo {
 				return new RequestTarget( domainDefaultAppName, null );
 			}
 
-			throw new ProxyRoutingException( ErrorCondition.NO_APP_FOR_HOST, "The uri '%s' does not start with an adaptor URL and host '%s' has no app configured".formatted( uriString, host ) );
+			// Two very different failures: a configured Site with no app is
+			// an operational signal; a hostname we've never heard of is
+			// scanner/spam noise (once it flooded the event stream 107:1).
+			if( host != null && isConfiguredSiteHost.test( host ) ) {
+				throw new ProxyRoutingException( ErrorCondition.NO_APP_FOR_HOST, "Host '%s' is a configured site but has no app mapped".formatted( host ) );
+			}
+			throw new ProxyRoutingException( ErrorCondition.UNKNOWN_HOST, "The uri '%s' does not start with an adaptor URL and host '%s' is not a configured site".formatted( uriString, host ) );
 		}
 
 		String appName = uriString.substring( ADAPTOR_URL.length() );
