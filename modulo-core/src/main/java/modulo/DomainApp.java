@@ -4,7 +4,19 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * FIXME: Temporary hardcoding of domain-to-app mapping until domains find home in config // Hugi 2026-01-27
+ * Hostname → app mappings supplied via system properties:
+ * {@code -Dmodulo.domain-app.<host>=<app>}.
+ *
+ * This is the routing source for deployments that don't use the native
+ * sites config — i.e. modulo running as a plain reverse proxy with no
+ * front-end (where clean-URL requests are routed by Host alone). When the
+ * native sites config is active, routing comes from it and this class is
+ * not consulted.
+ *
+ * The hardcoded production map that used to live here was retired
+ * 2026-08-29, when the last deployment using it moved to the native sites
+ * config. This property hook retires too once plain-proxy deployments can
+ * declare routing in config — see the roadmap's single-service iteration.
  */
 public class DomainApp {
 
@@ -13,31 +25,6 @@ public class DomainApp {
 	private static Map<String, String> createMap() {
 		final Map<String, String> domainToAppMap = new HashMap<>();
 
-		domainToAppMap.put( "www.byosk.is", "oskgunnlaugs" );
-		domainToAppMap.put( "www.oskgunnlaugs.com", "oskgunnlaugs" );
-
-		domainToAppMap.put( "www.undirskriftasofnun.is", "Campaigns" );
-		domainToAppMap.put( "www.allraheill.is", "Campaigns" );
-
-		domainToAppMap.put( "www.godurkodi.is", "Rebbi" );
-		domainToAppMap.put( "www.rebbi.is", "Rebbi" );
-		domainToAppMap.put( "tools.rebbi.is", "Rebbi" );
-		domainToAppMap.put( "maven.rebbi.is", "Rebbi" );
-
-		domainToAppMap.put( "www.hugi.io", "Hugi" );
-		domainToAppMap.put( "www.lidamot.is", "Lidamot" );
-		domainToAppMap.put( "www.hraunteigur.com", "ht23" );
-		domainToAppMap.put( "www.fermentedshark.com", "ng-website" );
-		domainToAppMap.put( "www.husvordurinn.is", "husvordurinn-ng" );
-		domainToAppMap.put( "www.kidwits.com", "KidWits" );
-		domainToAppMap.put( "www.whoacommunity.com", "whoacommunity" );
-		domainToAppMap.put( "jm.rebbi.is", "JavaMonitor" );
-		domainToAppMap.put( "www.gagnasafn.is", "Gagnasafn" );
-		domainToAppMap.put( "www.skoffin.com", "AjaxPlayground" );
-		domainToAppMap.put( "www.svakaparty.com", "Vacation" );
-
-		// Supplemental mappings from system properties, an interim config hook until
-		// domains find their proper home in modulo.conf: -Dmodulo.domain-app.<host>=<app>
 		System.getProperties()
 				.stringPropertyNames()
 				.stream()
