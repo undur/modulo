@@ -146,6 +146,34 @@ should be designed together so the schema grows coherently:
   consolidation, typo-domains. Currently in brainstorming; decide the
   shape alongside the above.
 
+### HTTP/3 via a fleet certificate
+
+Jetty's QUIC connector can present exactly one certificate (it exports
+a single keystore alias to PEM for quiche — `findFirst()`, literally),
+so multi-site h3 has been parked. Upstream won't unblock this soon:
+quiche supports SNI cert selection since 2026-02 (quiche#2368) but
+only via its Rust API — the C API Jetty binds exposes nothing — and
+Jetty's QUIC-layer rewrite signals a future alternative (likely
+pure-Java) QUIC implementation rather than deeper quiche investment.
+
+Decided 2026-08-29 — sidestep it with what native ACME gives us: one
+additional **fleet certificate** covering the hostnames of all
+ACME-managed sites (well under Let's Encrypt's 100-SAN limit), fed to
+the QUIC connector via its own SslContextFactory, while TCP/443 keeps
+per-site certs. Cost at steady state is one extra ACME order per
+renewal cycle; a hostname-set change triggers a fleet reissue (cheap —
+LE caches recent authorizations).
+
+Policy: **h3 stays disabled by default.** The fleet order is
+all-or-nothing — one dead domain stalls it — so enabling h3 is an
+operator's conscious opt-in. When enabled, modulo performs the fleet
+dance and prefers h3 via the Alt-Svc advertisement; Alt-Svc should
+only be sent for sites the fleet cert covers. Every failure mode
+(stale fleet cert, uncovered hostname, UDP blocked) degrades to
+TCP h2 — worst case is "no h3", never "site down". Renewal failures
+log loudly; teaching the fleet order to drop unvalidatable hostnames
+is a refinement for later.
+
 ### Iteration 6+ — Operability and polish
 
 These items are filed and will be addressed in subsequent iterations as
@@ -244,12 +272,13 @@ small and focused.
   JavaMonitor (which already owns app/instance lifecycle for WO apps)
   is the natural place for a unified config UI; modulo would expose an
   admin API that JavaMonitor drives.
-- **HTTP/3 disabled in production.** The wiring is complete and tested
-  end-to-end against a single-cert deployment, but Jetty's
-  `QuicheServerConnector` selects one cert from the keystore at startup
-  and presents it for all SNI handshakes. Multi-site deployments would
-  serve the wrong cert. Re-enable once Jetty supports per-SNI cert
-  selection in its QUIC path.
+- **HTTP/3 disabled by default.** The wiring is complete and tested,
+  but Jetty's QUIC path presents a single certificate for all SNI
+  handshakes. The plan to enable it anyway — an ACME "fleet
+  certificate" covering all managed hostnames, opt-in per deployment —
+  is on the roadmap above; default-off remains deliberate because the
+  fleet order adds an all-or-nothing coupling an operator should
+  consciously accept.
 
 ---
 
