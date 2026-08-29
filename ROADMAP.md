@@ -161,6 +161,14 @@ should be designed together so the schema grows coherently:
   hostname elsewhere (`redirect_to`), no app — rebrands, domain
   consolidation, typo-domains. Currently in brainstorming; decide the
   shape alongside the above.
+- **Read-only guest password.** A second password
+  (`modulo.guest-password`) granting the status pages (dashboard,
+  applications, overview, events, config) but not `/reload` or the ng
+  dev routes. Motivated by sharing the admin UI with the WO community:
+  today the single admin password unlocks mutating endpoints —
+  including `/ng/dev/terminate` — along with the read-only views. A
+  shareable view-only credential is generally useful beyond that
+  occasion.
 - **TOML as the operator-facing format** — analyzed and viable
   (dual-format via extension dispatch, same DTOs and validation, JSON
   stays as the admin-API wire format); deliberately parked until we
