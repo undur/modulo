@@ -112,42 +112,44 @@ public class Application extends NGApplication {
 		return _modulo;
 	}
 
+	/**
+	 * Everything this application serves is admin territory — the proxied
+	 * sites never enter this dispatch, only the admin UI, its resources,
+	 * component actions and framework routes (including the development
+	 * plugin's rather consequential /ng/dev/terminate). So the admin guard
+	 * sits here, in front of all of it, rather than on individual routes.
+	 */
+	@Override
+	public NGResponse dispatchRequest( final NGRequest request ) {
+		final NGActionResults denied = adminGuard( request );
+
+		if( denied != null ) {
+			return denied.generateResponse();
+		}
+
+		return super.dispatchRequest( request );
+	}
+
 	@Override
 	public Routes routes() {
 		return Routes
 				.create()
-				.map( "/WOAdaptorInfo", request -> guardedPlain( request, () -> new NGResponse( _modulo.adaptorConfig().toString(), 200 ) ) )
-				.map( "/overview", request -> guardedPage( request, MDOverviewPage.class ) )
-				.map( "/adaptor", request -> guardedPage( request, MDAdaptorPage.class ) )
+				.map( "/WOAdaptorInfo", request -> new NGResponse( _modulo.adaptorConfig().toString(), 200 ) )
+				.map( "/overview", MDOverviewPage.class )
+				.map( "/adaptor", MDAdaptorPage.class )
 				.map( "/reload", this::reloadAction )
-				.map( "/", request -> guardedPage( request, MDStartPage.class ) );
-	}
-
-	private NGActionResults guardedPage( final NGRequest request, final Class<? extends ng.appserver.templating.NGComponent> pageClass ) {
-		final NGActionResults denied = adminGuard( request );
-		return denied != null ? denied : pageWithName( pageClass, request.context() );
-	}
-
-	private NGActionResults guardedPlain( final NGRequest request, final java.util.function.Supplier<NGActionResults> action ) {
-		final NGActionResults denied = adminGuard( request );
-		return denied != null ? denied : action.get();
+				.map( "/", MDStartPage.class );
 	}
 
 	/**
 	 * Reloads the sites config into the running front-end. POST only (it has
-	 * side effects); same admin guard as the overview page. From the CLI:
+	 * side effects); auth is handled by the dispatch-level guard. From the CLI:
 	 *
 	 * <pre>curl -X POST -u :yourpassword https://yourserver/reload</pre>
 	 *
 	 * A config that fails validation changes nothing and reports why (422).
 	 */
 	private NGActionResults reloadAction( final NGRequest request ) {
-		final NGActionResults denied = adminGuard( request );
-
-		if( denied != null ) {
-			return denied;
-		}
-
 		if( !"POST".equalsIgnoreCase( request.method() ) ) {
 			return new NGResponse( "Use POST to reload\n", 405 );
 		}
