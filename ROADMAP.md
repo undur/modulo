@@ -221,8 +221,12 @@ they fit into related work, or when they become blockers:
 
 - **Pipeline unification** — collapse `startPlain` and `startWithFrontend`
   into one pipeline with multiple connectors. (Issue: #6)
-- **Nicer error pages** — replace Jetty's default 500/502/503 pages with
-  configurable per-Site versions. (Issue: #5)
+- **Per-Site error pages** — the global layer landed 2026-08-29:
+  failure conditions are a typed enum (`ErrorCondition`) with correct
+  statuses, each answered by an assignable responder
+  (`Modulo.errorHandling()`), defaulting to a clean self-contained
+  page. Remaining: per-Site assignment, which wants a config-schema
+  slot. (Issue: #5)
 - **Native access logging** — per-site logs in CLF or structured JSON,
   rotation, log shipping integration.
 - **Migrate WO apps to `X-Forwarded-Host`** so modulo can stop emulating
