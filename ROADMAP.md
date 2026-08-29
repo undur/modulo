@@ -133,6 +133,22 @@ Notes for the implementation:
 The sites config works; these are the slots it still wants. They
 should be designed together so the schema grows coherently:
 
+- **The tuning surface** (decided 2026-08-29). The start page's
+  configuration inventory enumerates every knob the server runs with —
+  worker threads, upstream timeouts/pools/buffers, compression, cert
+  poll and ACME timing, log retention, event buffer — most marked
+  "configurable: not yet". Work down that list, introducing each into
+  config with **scoped resolution**: hardcoded default ← global
+  `settings` block (sites config) ← per-site override ← per-app
+  override (once iteration 7's `apps` block exists). Not every knob
+  gets every scope — worker threads are inherently global, compression
+  is naturally per-site, upstream timeouts naturally per-app; the
+  inventory's grouping is a first cut at which is which. Durations as
+  human strings ("30s", "12h"). `modulo.conf` stays bootstrap-only
+  (ports, file locations, admin password). The inventory page then
+  becomes a progress bar: each knob's Source cell flips from
+  "hardcoded" to its config location as it lands.
+
 - **Per-site rewrite rules.** Path-prefix rewrites with explicit choice
   of 301 redirect, 302 redirect, or internal passthrough. Replaces the
   Apache `RewriteRule` directives we've been ignoring. (Issue: #4)
