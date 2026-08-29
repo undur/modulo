@@ -77,16 +77,19 @@ now so "no cert configured, ACME automatic" is the natural shape.
 
 ### Dynamic configuration without process restart
 
-Modulo currently re-reads config at startup; adding a Site means a
-restart. Fine for ~17 sites; not fine for "operator adds 5 sites per
-day" or multi-tenant scenarios.
+Largely landed 2026-08-29: `POST /reload` applies the sites config to
+the running front-end (routing, redirects, keystore, ACME set),
+validation-first so a bad config changes nothing. What remains here as
+ideas:
 
-Two flavors:
-- **File-watch + reload** (nginx style): when config files change,
-  reload. Easy to implement (we already poll cert mtimes). Fits
-  operator mental model.
-- **API-driven** (Caddy, Envoy style): config mutated via HTTP API;
-  on-disk file is just a snapshot. Better for automation. This is
+- **File-watch + auto-reload** (nginx style): trigger the same reload
+  when config files change on disk, no explicit POST. Easy now that
+  the reload path exists; question is whether implicit reloads are
+  actually wanted (a half-saved edit mid-write is a real hazard —
+  validation-first helps, but an operator might prefer the explicit
+  step).
+- **API-driven config** (Caddy, Envoy style): config mutated via HTTP
+  API; on-disk file is just a snapshot. Better for automation. This is
   the natural shape for the eventual JavaMonitor-as-admin-UI vision.
 
 ### Request/response observability — stats page or metrics endpoint
