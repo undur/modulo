@@ -22,11 +22,12 @@ class ErrorHandlingTest {
 	}
 
 	@Test
-	void defaultPageLeaksNoInternals() {
+	void defaultPageLeaksNoInternalsButIdentifiesTheLayer() {
 		final String html = DefaultErrorPage.html( 502, ErrorCondition.UPSTREAM_UNREACHABLE.title(), ErrorCondition.UPSTREAM_UNREACHABLE.message() );
 		assertFalse( html.toLowerCase().contains( "jetty" ) );
 		assertFalse( html.toLowerCase().contains( "exception" ) );
-		assertFalse( html.toLowerCase().contains( "modulo" ) );
+		// The one thing the page does reveal: which layer served it — 🤖 = modulo
+		assertTrue( html.contains( "🤖" ) );
 	}
 
 	@Test

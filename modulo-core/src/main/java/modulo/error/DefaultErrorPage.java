@@ -33,6 +33,7 @@ public class DefaultErrorPage {
 				          color: light-dark(#c0c0c4, #46464e); margin: 0; }
 				h1 { font-size: 1.4rem; font-weight: 600; margin: 0.5rem 0 1rem; }
 				p { margin: 0; line-height: 1.6; color: light-dark(#555, #a5a5ad); }
+				.layer { margin-top: 2.5rem; font-size: 1.2rem; opacity: 0.5; cursor: default; }
 			</style>
 			</head>
 			<body>
@@ -40,6 +41,7 @@ public class DefaultErrorPage {
 				<p class="status">%d</p>
 				<h1>%s</h1>
 				<p>%s</p>
+				<p class="layer" title="This page comes from modulo, the front-facing proxy — the error occurred before your request reached an application.">🤖</p>
 			</main>
 			</body>
 			</html>
