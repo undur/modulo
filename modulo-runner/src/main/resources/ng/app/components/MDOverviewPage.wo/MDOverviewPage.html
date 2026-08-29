@@ -86,7 +86,12 @@
 				</div>
 				<div class="row">
 					<div class="col-12">
-						<div class="m-3"><a href="/">Start page</a></div>
+						<div class="m-3 d-flex gap-3 align-items-center">
+							<form action="/reload" method="post" class="m-0">
+								<button class="btn" type="submit" title="Re-read the sites config and apply it without a restart. A config that fails validation changes nothing.">Reload sites config</button>
+							</form>
+							<a href="/">Start page</a>
+						</div>
 					</div>
 				</div>
 			</div>

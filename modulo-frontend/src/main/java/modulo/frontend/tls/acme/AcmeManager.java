@@ -84,8 +84,11 @@ public class AcmeManager {
 	private static final Duration CHALLENGE_TIMEOUT = Duration.ofMinutes( 3 );
 	private static final Duration ORDER_TIMEOUT = Duration.ofMinutes( 3 );
 
-	private final AcmeSettings settings;
-	private final List<Site> managedSites;
+	/** May be null while no site is ACME-managed. Swappable via {@link #update} for config reload. */
+	private volatile AcmeSettings settings;
+
+	/** Swappable via {@link #update} for config reload. */
+	private volatile List<Site> managedSites;
 
 	/** token → key authorization, for challenges currently in flight. */
 	private final Map<String, String> challengeTokens = new ConcurrentHashMap<>();
@@ -96,6 +99,37 @@ public class AcmeManager {
 	public AcmeManager( final AcmeSettings settings, final List<Site> managedSites ) {
 		this.settings = settings;
 		this.managedSites = List.copyOf( managedSites );
+	}
+
+	/**
+	 * Replaces the ACME settings and managed Site list — the config reload
+	 * path. Follow with {@link #ensurePlaceholders()} (so new sites can enter
+	 * the keystore) and {@link #checkNow()} (so they get real certificates).
+	 */
+	public void update( final AcmeSettings newSettings, final List<Site> newManagedSites ) {
+		settings = newSettings;
+		managedSites = List.copyOf( newManagedSites );
+	}
+
+	/**
+	 * Schedules an immediate issuance/renewal pass on the background timer
+	 * (serialized with the periodic passes). No-op if {@link #start} hasn't
+	 * run yet — the initial pass will cover it.
+	 */
+	public synchronized void checkNow() {
+		if( timer != null ) {
+			timer.schedule( new TimerTask() {
+				@Override
+				public void run() {
+					try {
+						checkAndIssue();
+					}
+					catch( final RuntimeException e ) {
+						logger.error( "ACME check pass failed", e );
+					}
+				}
+			}, 0 );
+		}
 	}
 
 	/**

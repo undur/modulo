@@ -49,7 +49,9 @@ public class CertStore {
 	/** Password used for the in-memory keystore. The store never touches disk so the value is arbitrary. */
 	private static final char[] KEYSTORE_PASSWORD = "modulo".toCharArray();
 
-	private final List<Site> sites;
+	/** The Sites whose material lives in the store. Swappable via {@link #updateSites} for config reload. */
+	private volatile List<Site> sites;
+
 	private final Duration pollInterval;
 	private final AtomicReference<KeyStore> currentStore = new AtomicReference<>();
 	private final Map<Path, Long> lastMtimes = new HashMap<>();
@@ -70,7 +72,7 @@ public class CertStore {
 	 * with zero certs is useless and we'd rather fail loudly at startup.
 	 */
 	public KeyStore load() {
-		final KeyStore store = buildStore();
+		final KeyStore store = buildStore( sites );
 		currentStore.set( store );
 		recordMtimes();
 		return store;
@@ -128,6 +130,31 @@ public class CertStore {
 		checkAndReload();
 	}
 
+	/**
+	 * Replaces the Site list and rebuilds the keystore from it — the config
+	 * reload path. The keystore is built <em>before</em> any state changes,
+	 * so a failure (no loadable certs) leaves the store serving the previous
+	 * configuration.
+	 */
+	public synchronized void updateSites( final List<Site> newSites ) {
+		final List<Site> copy = List.copyOf( newSites );
+		final KeyStore rebuilt = buildStore( copy );
+
+		sites = copy;
+		currentStore.set( rebuilt );
+		lastMtimes.clear();
+		recordMtimes();
+
+		for( final Consumer<KeyStore> listener : reloadListeners ) {
+			try {
+				listener.accept( rebuilt );
+			}
+			catch( final RuntimeException e ) {
+				logger.warn( "Reload listener threw: {}", e.toString() );
+			}
+		}
+	}
+
 	private synchronized void checkAndReload() {
 		boolean changed = false;
 		for( final Site site : sites ) {
@@ -143,7 +170,7 @@ public class CertStore {
 		logger.info( "Detected cert/key change on disk; rebuilding keystore" );
 		final KeyStore rebuilt;
 		try {
-			rebuilt = buildStore();
+			rebuilt = buildStore( sites );
 		}
 		catch( final RuntimeException e ) {
 			logger.warn( "Cert reload failed, keeping previous keystore: {}", e.toString() );
@@ -188,7 +215,7 @@ public class CertStore {
 		}
 	}
 
-	private KeyStore buildStore() {
+	private KeyStore buildStore( final List<Site> sitesToLoad ) {
 		final KeyStore store;
 		try {
 			store = KeyStore.getInstance( "PKCS12" );
@@ -199,7 +226,7 @@ public class CertStore {
 		}
 
 		int loaded = 0;
-		for( final Site site : sites ) {
+		for( final Site site : sitesToLoad ) {
 			try {
 				final Certificate[] chain = readCertChain( site.certPath() );
 				final PrivateKey key = readPrivateKey( site.keyPath() );

@@ -182,7 +182,7 @@ job. From the outside in:
 |---|---|---|---|
 | Launch properties | systemd unit / launcher args | How to reach wotaskd; where modulo.conf lives | service restart |
 | `modulo.conf` | `/opt/webobjects/modulo.conf` (properties) | Whether/where the front-end runs: ports, sites-file path | service restart |
-| Sites config | `sites.json` + optional per-app fragment files (JSON) | Everything per-site: hostnames, routing, TLS, redirects — plus the deployment-wide `acme` block | service restart |
+| Sites config | `sites.json` + optional per-app fragment files (JSON) | Everything per-site: hostnames, routing, TLS, redirects — plus the deployment-wide `acme` block | `POST /reload` — no restart |
 
 Plus one directory that is **state, not configuration**: the ACME
 storage directory. Modulo writes it; you never edit it (but you can
@@ -277,6 +277,21 @@ site. The plain proxy keeps running, so a config typo degrades service
 rather than taking it down. Hostnames are case-insensitive and
 normalized to lowercase.
 
+**Applying sites-config changes** doesn't need a restart — POST to
+`/reload` (same admin guard as `/overview`, which also has it as a
+button):
+
+```sh
+curl -X POST -u :yourpassword https://yourserver/reload
+```
+
+Routing, redirect policy, the keystore and the ACME-managed set all
+swap in place; a new ACME site starts on a placeholder cert and gets
+its real one seconds later. Reload is validation-first: a config that
+doesn't parse is rejected with the exact error (HTTP 422) and the
+running configuration is untouched. Changes to `modulo.conf` itself
+(ports, passwords) still require a restart.
+
 ### The ACME storage directory (state, not config)
 
 ```
@@ -313,10 +328,10 @@ anywhere else = alias):
 +  "hostnames": [ "www.example.com", "example.com", "example.org" ],
 ```
 
-Make sure DNS for the new name points at the server, then restart
-modulo. The renewal check notices the certificate no longer covers all
-configured hostnames and reissues it with the new name — typically
-live within seconds:
+Make sure DNS for the new name points at the server, then
+`POST /reload`. The renewal check notices the certificate no longer
+covers all configured hostnames and reissues it with the new name —
+typically live within seconds:
 
 ```
 Certificate for www.example.com does not cover all configured hostnames [...] — reissuing
@@ -340,9 +355,9 @@ canonical hostname.
 
    If the file location matches an existing `include` pattern, nothing
    else needs wiring. `"NewApp"` must be the name wotaskd knows the
-   app by — a name wotaskd doesn't recognize is warned at startup
+   app by — a name wotaskd doesn't recognize is warned
    (`points at apps unknown to wotaskd`).
-3. Restart modulo. Watch for placeholder → `Ordering` → `Obtained`,
+3. `POST /reload`. Watch for placeholder → `Ordering` → `Obtained`,
    then verify:
 
    ```sh
@@ -351,9 +366,9 @@ canonical hostname.
 
 ### Removing a site
 
-Delete its site object (or fragment file) and restart. Optionally
-delete its directory under `<storage>/sites/` — nothing renews it once
-it's out of the config.
+Delete its site object (or fragment file) and `POST /reload`.
+Optionally delete its directory under `<storage>/sites/` — nothing
+renews it once it's out of the config.
 
 ### Migrating from Apache + certbot
 

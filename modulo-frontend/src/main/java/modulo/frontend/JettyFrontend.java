@@ -6,7 +6,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.regex.Pattern;
 
 import org.eclipse.jetty.alpn.server.ALPNServerConnectionFactory;
@@ -66,6 +68,9 @@ public class JettyFrontend {
 
 	private Server server;
 	private Path http3PemWorkDir;
+
+	/** hostname → Site, consulted per-request by the redirect handlers. Swapped atomically by {@link #updateSites} on config reload. */
+	private final AtomicReference<Map<String, Site>> sitesByHost = new AtomicReference<>();
 
 	public JettyFrontend(
 			final List<Site> sites,
@@ -127,8 +132,8 @@ public class JettyFrontend {
 			}
 		} );
 
-		final Map<String, Site> sitesByHost = buildHostMap( sites );
-		final Handler chain = buildHandlerChain( sitesByHost );
+		sitesByHost.set( buildHostMap( sites ) );
+		final Handler chain = buildHandlerChain( sitesByHost::get );
 		server.setHandler( chain );
 
 		if( errorHandler != null ) {
@@ -147,6 +152,15 @@ public class JettyFrontend {
 		server.start();
 		certStore.startWatching();
 		return server;
+	}
+
+	/**
+	 * Swaps in a new Site list for redirect/canonical policy — the config
+	 * reload path. Certificate handling is the CertStore's concern; this only
+	 * affects which hostnames the handlers know about.
+	 */
+	public void updateSites( final List<Site> newSites ) {
+		sitesByHost.set( buildHostMap( newSites ) );
 	}
 
 	public void stop() throws Exception {
@@ -241,7 +255,7 @@ public class JettyFrontend {
 		return out;
 	}
 
-	private Handler buildHandlerChain( final Map<String, Site> sitesByHost ) {
+	private Handler buildHandlerChain( final Supplier<Map<String, Site>> sitesByHost ) {
 		// Order matters: ACME challenge first (must respond on plain HTTP), then
 		// HTTP→HTTPS redirect, then canonical-hostname redirect, then response
 		// compression, then optionally Alt-Svc advertising H/3, then RFC-2965
@@ -519,10 +533,10 @@ public class JettyFrontend {
 	 */
 	private static class HttpsRedirectHandler extends Handler.Wrapper {
 
-		private final Map<String, Site> sitesByHost;
+		private final Supplier<Map<String, Site>> sitesByHost;
 		private final int httpsPort;
 
-		HttpsRedirectHandler( final Map<String, Site> sitesByHost, final int httpsPort, final Handler next ) {
+		HttpsRedirectHandler( final Supplier<Map<String, Site>> sitesByHost, final int httpsPort, final Handler next ) {
 			super( next );
 			this.sitesByHost = sitesByHost;
 			this.httpsPort = httpsPort;
@@ -534,7 +548,7 @@ public class JettyFrontend {
 				return super.handle( request, response, callback );
 			}
 			final String host = hostOf( request );
-			final Site site = host == null ? null : sitesByHost.get( host );
+			final Site site = host == null ? null : sitesByHost.get().get( host );
 			if( site == null || !site.httpsRedirect() ) {
 				return super.handle( request, response, callback );
 			}
@@ -551,9 +565,9 @@ public class JettyFrontend {
 	 */
 	private static class CanonicalRedirectHandler extends Handler.Wrapper {
 
-		private final Map<String, Site> sitesByHost;
+		private final Supplier<Map<String, Site>> sitesByHost;
 
-		CanonicalRedirectHandler( final Map<String, Site> sitesByHost, final Handler next ) {
+		CanonicalRedirectHandler( final Supplier<Map<String, Site>> sitesByHost, final Handler next ) {
 			super( next );
 			this.sitesByHost = sitesByHost;
 		}
@@ -561,7 +575,7 @@ public class JettyFrontend {
 		@Override
 		public boolean handle( final Request request, final Response response, final Callback callback ) throws Exception {
 			final String host = hostOf( request );
-			final Site site = host == null ? null : sitesByHost.get( host );
+			final Site site = host == null ? null : sitesByHost.get().get( host );
 			if( site == null || !site.canonicalRedirect() || site.primaryHostname().equalsIgnoreCase( host ) ) {
 				return super.handle( request, response, callback );
 			}

@@ -106,6 +106,11 @@ public class Modulo {
 	 */
 	private final ErrorHandling _errorHandling = ErrorHandling.withDefaults();
 
+	/** The front-end's moving parts, kept for config reload. All null in plain-proxy mode. */
+	private CertStore _certStore;
+	private JettyFrontend _frontend;
+	private AcmeManager _acmeManager;
+
 	/**
 	 * Construct a new instance running the plain reverse-proxy connector on
 	 * the given port, with no front-end (today's behavior).
@@ -244,37 +249,71 @@ public class Modulo {
 
 		logUnmappedDomains( sites );
 
-		// ACME-managed sites without a cert on disk get a self-signed
-		// placeholder before the keystore is built, so the TLS connector can
-		// start immediately; real certs are ordered in the background below.
-		final AcmeManager acmeManager;
-		if( !sitesConfig.acmeManagedSites().isEmpty() ) {
-			acmeManager = new AcmeManager( sitesConfig.acme(), sitesConfig.acmeManagedSites() );
-			acmeManager.ensurePlaceholders();
-		}
-		else {
-			acmeManager = null;
-		}
+		// The ACME manager always exists when the front-end runs (a config
+		// reload may introduce the first ACME site later). ACME-managed sites
+		// without a cert on disk get a self-signed placeholder before the
+		// keystore is built, so the TLS connector can start immediately; real
+		// certs are ordered in the background below.
+		_acmeManager = new AcmeManager( sitesConfig.acme(), sitesConfig.acmeManagedSites() );
+		_acmeManager.ensurePlaceholders();
 
-		final CertStore certStore = new CertStore( sites );
-		certStore.load();
+		_certStore = new CertStore( sites );
+		_certStore.load();
 
-		final JettyFrontend frontend = new JettyFrontend(
+		_frontend = new JettyFrontend(
 				sites,
-				certStore,
+				_certStore,
 				config.acmeWebroot(),
-				acmeManager == null ? null : acmeManager::challengeContent,
+				_acmeManager::challengeContent,
 				config.httpPort(),
 				config.httpsPort(),
 				config.http3(),
 				new ModuloProxy( rewriteURIFunction(), _errorHandling ),
 				new ModuloProxy.ModuloErrorHandler( _errorHandling ) );
-		frontend.start();
+		_frontend.start();
 
 		// Only after the server is up — HTTP-01 needs the HTTP connector answering
-		if( acmeManager != null ) {
-			acmeManager.start( certStore::reloadNow );
+		_acmeManager.start( _certStore::reloadNow );
+	}
+
+	/**
+	 * Re-reads the sites config and applies it to the running front-end
+	 * without a restart: routing map, redirect policy, keystore and
+	 * ACME-managed set all swap in place; new ACME sites get a placeholder
+	 * immediately and a real certificate ordered in the background.
+	 *
+	 * Validation-first: a config that doesn't parse (or yields no loadable
+	 * certificates) throws and changes <em>nothing</em> — the front-end keeps
+	 * serving its current configuration.
+	 *
+	 * @return A short human-readable summary of what is now live
+	 */
+	public synchronized String reloadSitesConfig() throws Exception {
+		if( _frontend == null ) {
+			throw new IllegalStateException( "The front-end is not running — nothing to reload (plain-proxy mode, or front-end startup failed)" );
 		}
+
+		final SitesConfig newConfig = SitesConfigReader.read( _frontendConfig.sitesFile() );
+		final List<Site> sites = newConfig.frontendSites();
+
+		if( sites.isEmpty() ) {
+			throw new IllegalStateException( "The sites config contains no sites — refusing to reload the front-end down to nothing" );
+		}
+
+		_acmeManager.update( newConfig.acme(), newConfig.acmeManagedSites() );
+		_acmeManager.ensurePlaceholders();
+
+		_certStore.updateSites( sites ); // rebuilds the keystore; throws (changing nothing) if no certs load
+		_frontend.updateSites( sites );
+		_sitesConfig = newConfig;
+		_domainToAppMap = newConfig.domainToAppMap();
+
+		logUnmappedDomains( sites );
+		_acmeManager.checkNow();
+
+		final String summary = "Reloaded sites config: %d site(s), %d ACME-managed".formatted( sites.size(), newConfig.acmeManagedSites().size() );
+		logger.info( summary );
+		return summary;
 	}
 
 	/**

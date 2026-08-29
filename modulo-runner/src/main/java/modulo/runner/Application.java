@@ -111,7 +111,35 @@ public class Application extends NGApplication {
 				.create()
 				.map( "/WOAdaptorInfo", request -> new NGResponse( _modulo.adaptorConfig().toString(), 200 ) )
 				.map( "/overview", this::overviewPage )
+				.map( "/reload", this::reloadAction )
 				.map( "/", MDStartPage.class );
+	}
+
+	/**
+	 * Reloads the sites config into the running front-end. POST only (it has
+	 * side effects); same admin guard as the overview page. From the CLI:
+	 *
+	 * <pre>curl -X POST -u :yourpassword https://yourserver/reload</pre>
+	 *
+	 * A config that fails validation changes nothing and reports why (422).
+	 */
+	private NGActionResults reloadAction( final NGRequest request ) {
+		final NGActionResults denied = adminGuard( request );
+
+		if( denied != null ) {
+			return denied;
+		}
+
+		if( !"POST".equalsIgnoreCase( request.method() ) ) {
+			return new NGResponse( "Use POST to reload\n", 405 );
+		}
+
+		try {
+			return new NGResponse( _modulo.reloadSitesConfig() + "\n", 200 );
+		}
+		catch( final Exception e ) {
+			return new NGResponse( "Reload failed — the previous configuration is untouched and still serving:\n\n%s\n".formatted( e.getMessage() ), 422 );
+		}
 	}
 
 	/**
@@ -126,6 +154,21 @@ public class Application extends NGApplication {
 	 * </ul>
 	 */
 	private NGActionResults overviewPage( final NGRequest request ) {
+		final NGActionResults denied = adminGuard( request );
+
+		if( denied != null ) {
+			return denied;
+		}
+
+		return pageWithName( MDOverviewPage.class, request.context() );
+	}
+
+	/**
+	 * The shared guard for admin endpoints.
+	 *
+	 * @return null when the request may proceed, otherwise the response to send instead
+	 */
+	private NGActionResults adminGuard( final NGRequest request ) {
 		final String password = _config.getProperty( "modulo.admin-password" );
 
 		if( password != null && !password.isBlank() ) {
@@ -136,10 +179,10 @@ public class Application extends NGApplication {
 			}
 		}
 		else if( !isDevelopmentMode() ) {
-			return new NGResponse( "The overview page is disabled. Set modulo.admin-password in %s to enable it.".formatted( CONFIG_FILE ), 403 );
+			return new NGResponse( "Admin endpoints are disabled. Set modulo.admin-password in %s to enable them.".formatted( CONFIG_FILE ), 403 );
 		}
 
-		return pageWithName( MDOverviewPage.class, request.context() );
+		return null;
 	}
 
 	/**
