@@ -513,8 +513,32 @@ public class Modulo {
 		}
 	}
 
+	/** True while we're refusing to adopt an empty config over a populated one — for event-noise suppression. */
+	private volatile boolean _skippingEmptyConfig = false;
+
 	public void reloadAdaptorConfig() {
-		_adaptorConfig = fetchAdaptorConfig();
+		final AdaptorConfig fetched = fetchAdaptorConfig();
+
+		// A freshly restarted wotaskd reports an EMPTY config until its
+		// instances re-register via lifebeats (~30s) — adopting it wholesale
+		// turned a wotaskd deploy into a fleet-wide brownout. Never trade a
+		// populated config for an empty one; the next poll picks up reality.
+		if( fetched.applications().isEmpty() && _adaptorConfig != null && !_adaptorConfig.applications().isEmpty() ) {
+			if( !_skippingEmptyConfig ) {
+				_skippingEmptyConfig = true;
+				logger.warn( "wotaskd returned an empty config while we hold {} app(s) — keeping the current config (wotaskd restarting?)", _adaptorConfig.applications().size() );
+				_events.add( Event.Severity.WARN, "empty-config-skipped", null, null, "wotaskd returned an empty adaptor config; keeping the current one until it repopulates" );
+			}
+			return;
+		}
+
+		if( _skippingEmptyConfig && !fetched.applications().isEmpty() ) {
+			_skippingEmptyConfig = false;
+			logger.info( "wotaskd config repopulated with {} app(s)", fetched.applications().size() );
+			_events.add( Event.Severity.INFO, "config-repopulated", null, null, "wotaskd's adaptor config repopulated with %d app(s)".formatted( fetched.applications().size() ) );
+		}
+
+		_adaptorConfig = fetched;
 
 		// FIXME: Hardcoded modulo reference should not really be present —
 		// its proper home is a second adaptor-config source (config-declared
