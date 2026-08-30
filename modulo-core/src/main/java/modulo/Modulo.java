@@ -317,7 +317,7 @@ public class Modulo {
 		connector.setPort( _port );
 		server.addConnector( connector );
 		_proxy = new ModuloProxy( rewriteURIFunction(), _errorHandling, _events, _refusalObserver, _requestStats );
-		server.setHandler( _proxy );
+		server.setHandler( new WebSocketTunnelHandler( _proxy, rewriteURIFunction(), _errorHandling ) );
 		server.setErrorHandler( new ModuloProxy.ModuloErrorHandler( _errorHandling ) );
 
 		server.start();
@@ -377,7 +377,7 @@ public class Modulo {
 				_h3FleetStore,
 				fleetSite == null ? null : Set.copyOf( fleetSite.allHostnames() ),
 				config.accessLogDir(),
-				_proxy = new ModuloProxy( rewriteURIFunction(), _errorHandling, _events, _refusalObserver, _requestStats ),
+				new WebSocketTunnelHandler( _proxy = new ModuloProxy( rewriteURIFunction(), _errorHandling, _events, _refusalObserver, _requestStats ), rewriteURIFunction(), _errorHandling ),
 				new ModuloProxy.ModuloErrorHandler( _errorHandling ) );
 		_frontend.start();
 
