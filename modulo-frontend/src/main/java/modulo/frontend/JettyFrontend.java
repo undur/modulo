@@ -305,7 +305,16 @@ public class JettyFrontend {
 		httpsConfig.setSendServerVersion( false );
 		httpsConfig.setSecureScheme( "https" );
 		httpsConfig.setSecurePort( httpsPort );
-		httpsConfig.addCustomizer( new SecureRequestCustomizer() );
+		// sniHostCheck off: with it on, a request for a hostname we have no
+		// certificate for (scanners probing every DNS name of the server) is
+		// rejected at the TLS layer with a bare 400 before our routing ever
+		// runs — it never reaches UNKNOWN_HOST handling, the unmatched-host
+		// tally, or the proper 404 page. Host-based routing is modulo's job;
+		// a client that ignored the certificate mismatch still gets an honest
+		// answer. (Apache behaved the same way: default vhost cert + a page.)
+		final SecureRequestCustomizer secureRequestCustomizer = new SecureRequestCustomizer();
+		secureRequestCustomizer.setSniHostCheck( false );
+		httpsConfig.addCustomizer( secureRequestCustomizer );
 
 		final HttpConnectionFactory http1 = new HttpConnectionFactory( httpsConfig );
 		final HTTP2ServerConnectionFactory http2 = new HTTP2ServerConnectionFactory( httpsConfig );
@@ -331,7 +340,16 @@ public class JettyFrontend {
 		httpsConfig.setSendServerVersion( false );
 		httpsConfig.setSecureScheme( "https" );
 		httpsConfig.setSecurePort( httpsPort );
-		httpsConfig.addCustomizer( new SecureRequestCustomizer() );
+		// sniHostCheck off: with it on, a request for a hostname we have no
+		// certificate for (scanners probing every DNS name of the server) is
+		// rejected at the TLS layer with a bare 400 before our routing ever
+		// runs — it never reaches UNKNOWN_HOST handling, the unmatched-host
+		// tally, or the proper 404 page. Host-based routing is modulo's job;
+		// a client that ignored the certificate mismatch still gets an honest
+		// answer. (Apache behaved the same way: default vhost cert + a page.)
+		final SecureRequestCustomizer secureRequestCustomizer = new SecureRequestCustomizer();
+		secureRequestCustomizer.setSniHostCheck( false );
+		httpsConfig.addCustomizer( secureRequestCustomizer );
 
 		final QuicheServerQuicConfiguration quicConfig = HTTP3ServerQuicConfiguration.configure(
 				new QuicheServerQuicConfiguration( pemWorkDir ) );

@@ -125,6 +125,27 @@ class ModuloProxy extends ProxyHandler.Reverse {
 					true );
 			return true;
 		}
+		catch( final RuntimeException e ) {
+			// Jetty's HTTP parser is more lenient than java.net.URI, so a
+			// query string full of scanner junk (backslashes, stray percent
+			// signs) survives parsing but blows up when the proxy builds the
+			// upstream java.net.URI. The client sent garbage — answer 400,
+			// don't let it masquerade as a server error.
+			if( rootCause( e ) instanceof java.net.URISyntaxException ) {
+				logger.debug( "Malformed request URI from client: {}", e.getMessage() );
+				_errorHandling.respond( ErrorCondition.BAD_REQUEST, clientToProxyRequest, proxyToClientResponse, proxyToClientCallback );
+				return true;
+			}
+			throw e;
+		}
+	}
+
+	private static Throwable rootCause( final Throwable throwable ) {
+		Throwable cause = throwable;
+		while( cause.getCause() != null && cause.getCause() != cause ) {
+			cause = cause.getCause();
+		}
+		return cause;
 	}
 
 	@Override
@@ -403,7 +424,12 @@ class ModuloProxy extends ProxyHandler.Reverse {
 			ErrorCondition condition = (ErrorCondition)request.getAttribute( ERROR_CONDITION_ATTRIBUTE );
 
 			if( condition == null ) {
-				condition = ErrorCondition.INTERNAL;
+				// Untagged errors come straight from Jetty (parse failures,
+				// rejected requests). Honor its verdict on whose fault it was:
+				// a 4xx is the client's problem, not a server error — labeling
+				// it INTERNAL once turned scanner spam into a wall of 500s.
+				final int status = response.getStatus();
+				condition = status >= 400 && status < 500 ? ErrorCondition.BAD_REQUEST : ErrorCondition.INTERNAL;
 			}
 
 			_errorHandling.respond( condition, request, response, callback );

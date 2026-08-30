@@ -31,6 +31,13 @@ public enum ErrorCondition {
 	/** The app instance did not respond within the proxy timeout. */
 	UPSTREAM_TIMEOUT( 504, "No response", "The application serving this site did not respond in time. Please try again in a moment." ),
 
+	/**
+	 * The client's request was malformed — e.g. a query string java.net.URI
+	 * refuses to parse (scanner exploit probes full of backslashes). Traffic
+	 * noise, not an operational signal.
+	 */
+	BAD_REQUEST( 400, "Bad request", "The request could not be understood." ),
+
 	/** Anything else — the catch-all. */
 	INTERNAL( 500, "Something went wrong", "An unexpected error occurred while handling this request." );
 
