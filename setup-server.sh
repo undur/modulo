@@ -20,7 +20,7 @@ ACME_EMAIL="${2:?usage: setup-server.sh <server-hostname> <acme-email>}"
 SERVER="root@${SERVER_HOST}"
 
 WORKDIR="${MODULO_SETUP_DIR:-${HOME}/.modulo-setup}"    # sources + build cache live here between runs
-JVM="/opt/jdk-26/bin/java"                              # must already exist ON THE SERVER
+JVM="/opt/jdk-26/bin/java"                              # installed on the server if missing (section 2)
 
 ### 1 — Fetch the sources and build the three bundles ####################
 # This whole section disappears the day prebuilt release archives exist —
@@ -54,10 +54,17 @@ STACK_REPO="${WORKDIR}/wonder-slim-deployment"
 # The stack owns /opt/webobjects. Apps you deploy later conventionally
 # get per-app homes elsewhere (we use /rebbi/<domain>/{wo,conf,log}) —
 # the include pattern in modulo.toml below picks their site files up.
+# A missing JVM is installed (Oracle JDK 26, matching the arch).
 
 ssh "${SERVER}" "
   set -e
-  test -x ${JVM} || { echo 'ERROR: no JVM at ${JVM} on the server' >&2; exit 1; }
+  if ! test -x ${JVM}; then
+    case \$(uname -m) in x86_64) ARCH=x64;; aarch64) ARCH=aarch64;; *) echo 'unsupported arch' >&2; exit 1;; esac
+    echo \"Installing Oracle JDK 26 (\${ARCH})...\"
+    curl -fsSL \"https://download.oracle.com/java/26/latest/jdk-26_linux-\${ARCH}_bin.tar.gz\" -o /tmp/jdk.tgz
+    mkdir -p /opt/jdk-26 && tar -xzf /tmp/jdk.tgz -C /opt/jdk-26 --strip-components=1 && rm /tmp/jdk.tgz
+  fi
+  test -x ${JVM} || { echo 'ERROR: JVM install failed' >&2; exit 1; }
   id webobjects >/dev/null 2>&1 || useradd --system --create-home webobjects
   mkdir -p /opt/webobjects/apps /opt/webobjects/conf /opt/webobjects/log/access /opt/webobjects/acme
 "
