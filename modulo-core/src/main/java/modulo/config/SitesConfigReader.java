@@ -121,7 +121,16 @@ public class SitesConfigReader {
 	}
 
 	/** The raw shape of the main config file. Field names here are the config file's schema. */
-	record Root( Acme acme, List<String> include, List<SiteEntry> sites ) {}
+	record Root( Frontend frontend, Admin admin, Wotaskd wotaskd, Acme acme, List<String> include, List<SiteEntry> sites ) {}
+
+	/** The [frontend] table — restart-required bootstrap, main file only. */
+	record Frontend( Integer httpPort, Integer httpsPort, Boolean http3, String accessLogDir, String acmeWebroot ) {}
+
+	/** The [admin] table. */
+	record Admin( String password ) {}
+
+	/** The [wotaskd] table — where the adaptor config comes from. */
+	record Wotaskd( String host, Integer port, String password ) {}
 
 	/**
 	 * The raw shape of an included file: sites only. The deployment-wide
@@ -138,9 +147,32 @@ public class SitesConfigReader {
 
 	record RewriteEntry( String match, String to, String redirect, Boolean appendQuery, Boolean encodeCaptures ) {}
 
+	/** The fully parsed root config: hot-reloadable sites + restart-required bootstrap. */
+	public record ParsedConfig( SitesConfig sites, BootstrapConfig bootstrap ) {}
+
 	public static SitesConfig read( final Path file ) throws IOException {
+		return readWithBootstrap( file ).sites();
+	}
+
+	public static ParsedConfig readWithBootstrap( final Path file ) throws IOException {
 		final Root root = parseRoot( Files.readString( file, StandardCharsets.UTF_8 ), file.toString() );
-		return assemble( root, file );
+		return new ParsedConfig( assemble( root, file ), toBootstrap( root ) );
+	}
+
+	private static BootstrapConfig toBootstrap( final Root root ) {
+		final Frontend f = root.frontend();
+		final Admin a = root.admin();
+		final Wotaskd w = root.wotaskd();
+		return new BootstrapConfig(
+				f == null ? null : f.httpPort(),
+				f == null ? null : f.httpsPort(),
+				f == null ? null : f.http3(),
+				f == null ? null : f.accessLogDir(),
+				f == null ? null : f.acmeWebroot(),
+				a == null ? null : a.password(),
+				w == null ? null : w.host(),
+				w == null ? null : w.port(),
+				w == null ? null : w.password() );
 	}
 
 	/**

@@ -80,7 +80,7 @@ Copy the bundle over and give it a service. The conventional layout:
 
 ```
 /opt/webobjects/apps/modulo-runner.woa    the bundle
-/opt/webobjects/modulo.conf               runtime properties (Part 2)
+/opt/webobjects/modulo.toml               root config (Part 2)
 /opt/webobjects/sites.toml                sites config (Part 2)
 /opt/webobjects/acme/                     ACME state, created by modulo
 /opt/webobjects/log/modulo.log            log output
@@ -118,16 +118,15 @@ AmbientCapabilities=CAP_NET_BIND_SERVICE
 
 ### Configure and start
 
-Create `/opt/webobjects/modulo.conf`:
-
-```properties
-modulo.frontend.sites-file = /opt/webobjects/sites.toml
-```
-
-Create `/opt/webobjects/sites.toml` with your first site (see Part 2
+Create `/opt/webobjects/modulo.toml` with your first site (see Part 2
 for every field):
 
 ```toml
+[wotaskd]
+host     = "myserver.example"
+port     = 1085
+password = "..."
+
 [acme]
 email   = "you@example.com"
 storage = "/opt/webobjects/acme"
@@ -147,7 +146,7 @@ tail -f /opt/webobjects/log/modulo.log
 On a healthy first start you'll see, in order:
 
 ```
-Front-end configured with 1 site(s) from /opt/webobjects/sites.toml
+Front-end configured with 1 site(s) from /opt/webobjects/modulo.toml
 No certificate on disk for www.example.com yet — writing self-signed placeholder
 Loaded 1 certificate(s) into in-memory keystore
 Ordering certificate for www.example.com covering [www.example.com, example.com]
@@ -181,61 +180,59 @@ job. From the outside in:
 
 | Layer | Where | What it configures | Changes require |
 |---|---|---|---|
-| Launch properties | systemd unit / launcher args | How to reach wotaskd; where modulo.conf lives | service restart |
-| `modulo.conf` | `/opt/webobjects/modulo.conf` (properties) | Whether/where the front-end runs: ports, sites-file path | service restart |
-| Sites config | `sites.toml` + optional per-app fragment files (TOML) | Everything per-site: hostnames, routing, TLS, redirects — plus the deployment-wide `acme` block | `POST /reload` — no restart |
+| Root config, bootstrap tables | `/opt/webobjects/modulo.toml`: `[frontend]`, `[admin]`, `[wotaskd]` | Ports, admin password, how to reach wotaskd | service restart (a `/reload` that changes these answers with an explicit "restart required" notice) |
+| Root config, sites part | same file: `[acme]`, `include`, `[[sites]]` + per-app fragment files | Everything per-site: hostnames, routing, TLS, redirects | `POST /reload` — no restart |
 
 Plus one directory that is **state, not configuration**: the ACME
 storage directory. Modulo writes it; you never edit it (but you can
 read it — everything is plain PEM).
 
-### Layer 1: launch properties
+### The root config: modulo.toml
 
-Passed as `-D` arguments at launch (typically in the systemd unit):
-
-| Property | Required | Purpose |
-|---|---|---|
-| `modulo.wotaskd.host` | yes | Host wotaskd runs on. |
-| `modulo.wotaskd.port` | yes | wotaskd's config port (conventionally 1085). |
-| `modulo.wotaskd.password` | yes | wotaskd's config password. |
-| `modulo.config-file` | no | Alternate location for modulo.conf (default `/opt/webobjects/modulo.conf`). |
-
-### Layer 2: modulo.conf
-
-A plain Java properties file. Without it (or without a site source
-configured), modulo runs as a plain reverse proxy on port 1400 only —
-the front-end simply doesn't start.
-
-| Property | Default | Purpose |
-|---|---|---|
-| `modulo.frontend.sites-file` | — | Path to the sites config. **Setting this is what enables the front-end.** |
-| `modulo.frontend.http-port` | `80` | Plain-HTTP connector (redirects + ACME challenges). |
-| `modulo.frontend.https-port` | `443` | TLS connector. |
-| `modulo.frontend.http3` | `false` | HTTP/3 (QUIC). Leave off for multi-site deployments — see "Deliberate non-goals" in the roadmap. |
-| `modulo.frontend.access-log-dir` | — | Directory for per-site access logs: one file per Site (aliases fold into the canonical hostname's file, unmatched hosts go to `_unmatched`), combined format + request duration, daily rollover, 90-day retention. Unset disables. |
-| `modulo.admin-password` | — | Guards the admin pages (HTTP Basic, any username). When set, auth is always required; when unset, the pages are open in development mode and disabled in production. |
-| `modulo.frontend.acme-webroot` | — | *Transitional.* Webroot where an external certbot writes HTTP-01 tokens, for deployments mid-migration to native ACME. |
-
-### Layer 3: the sites config
-
-One main TOML file, optionally spread across per-app fragment files.
-(JSON files with the same schema remain readable by extension during
-the migration away from the original JSON format; new configs should
-be TOML.) The **main file** holds the deployment-wide blocks and
-(optionally) sites of its own:
+One TOML file, `/opt/webobjects/modulo.toml` (override the location
+with `-Dmodulo.config-file=...`). Without it, modulo runs as a plain
+reverse proxy on port 1400 only. It holds three restart-required
+bootstrap tables, then the sites config with its include mechanism.
+**Top-level keys (`include`) must appear before the first table
+header** — that's TOML, not modulo.
 
 ```toml
-# Optional: pull in sites from other files
-include = [ "/apps/*/conf/site.toml" ]
+include = [ "/apps/*/conf/site.toml" ]   # optional: pull in sites from other files
 
-# Required if any site uses ACME (i.e. normally):
-[acme]
+[frontend]
+httpPort     = 80                    # plain-HTTP connector (redirects + ACME challenges)
+httpsPort    = 443                   # TLS connector
+http3        = false                 # HTTP/3 (QUIC) — leave off for multi-site, see roadmap
+accessLogDir = "/opt/webobjects/log/access"   # per-site access logs; unset disables
+# acmeWebroot = "..."                # transitional: external certbot's HTTP-01 webroot
+
+[admin]
+password = "..."     # guards the admin pages (HTTP Basic, any username).
+                     # Set: auth always required. Unset: open in development
+                     # mode, disabled in production.
+
+[wotaskd]
+host     = "myserver.example"        # where wotaskd runs
+port     = 1085                      # its config port
+password = "..."                     # its config password
+# (each may be overridden with -Dmodulo.wotaskd.* for local testing)
+
+[acme]                               # required if any site uses ACME (i.e. normally)
 email     = "you@example.com"        # required — CA sends expiry warnings here
 storage   = "/opt/webobjects/acme"   # required — modulo-owned state dir
 directory = "letsencrypt"            # optional — or "letsencrypt-staging", or any directory URI
 
-# Optional if include covers everything: [[sites]] entries of its own
+# ...plus [[sites]] entries of its own, optional if include covers everything
 ```
+
+**Reload granularity is per setting, not per file:** `POST /reload`
+applies `[[sites]]`/`[acme]`/`include` changes immediately; edits to
+the three bootstrap tables are detected and answered with an explicit
+"restart-required setting(s) changed and NOT applied" notice.
+
+(A legacy layout — `modulo.conf` properties file plus a separate
+sites file, wotaskd settings as `-D` flags — remains readable while
+migrations last, chosen automatically by what exists on disk.)
 
 **Fragment files** contain only a `"sites"` array — `acme` and
 `include` belong to the main file alone. This is the layout that keeps
@@ -327,8 +324,9 @@ Routing, redirect policy, the keystore and the ACME-managed set all
 swap in place; a new ACME site starts on a placeholder cert and gets
 its real one seconds later. Reload is validation-first: a config that
 doesn't parse is rejected with the exact error (HTTP 422) and the
-running configuration is untouched. Changes to `modulo.conf` itself
-(ports, passwords) still require a restart.
+running configuration is untouched. Changes to the bootstrap tables
+([frontend]/[admin]/[wotaskd]) still require a restart — a reload that
+touches them says so explicitly in its response.
 
 ### The ACME storage directory (state, not config)
 

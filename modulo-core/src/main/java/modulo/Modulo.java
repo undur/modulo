@@ -188,31 +188,69 @@ public class Modulo {
 	 * file exists) the TLS front-end alongside it.
 	 */
 	public Modulo( final int port, final FrontendConfig frontendConfig ) {
+		this( port, frontendConfig, null );
+	}
+
+	/**
+	 * @param bootstrap The root config file's restart-required tables
+	 *            ([frontend]/[admin]/[wotaskd]) as parsed at startup — the
+	 *            baseline reloads are diffed against. Null when running from
+	 *            legacy properties (values then come from -D system
+	 *            properties alone).
+	 */
+	public Modulo( final int port, final FrontendConfig frontendConfig, final modulo.config.BootstrapConfig bootstrap ) {
 		_port = port;
 		_frontendConfig = frontendConfig;
+		_activeBootstrap = bootstrap;
 
 		reloadAdaptorConfig();
+	}
+
+	/**
+	 * The bootstrap values this instance is actually running with — set once
+	 * at construction, never by reload (that's the point: reload warns when
+	 * the file disagrees with these). Static because the wotaskd accessors
+	 * are static; a JVM runs one Modulo.
+	 */
+	private static volatile modulo.config.BootstrapConfig _activeBootstrap;
+
+	/**
+	 * A -D system property overrides the config file — handy for local
+	 * testing and the only source when running from legacy properties.
+	 */
+	private static String bootstrapValue( final String systemProperty, final Object configured ) {
+		final String override = System.getProperty( systemProperty );
+		if( override != null ) {
+			return override;
+		}
+		if( configured != null ) {
+			return String.valueOf( configured );
+		}
+		throw new IllegalStateException( "%s is set neither in the config file's [wotaskd] table nor as a system property".formatted( systemProperty ) );
 	}
 
 	/**
 	 * @return The host wotaskd is running on
 	 */
 	public static String wotaskdHost() {
-		return getRequiredProperty( "modulo.wotaskd.host" );
+		final modulo.config.BootstrapConfig b = _activeBootstrap;
+		return bootstrapValue( "modulo.wotaskd.host", b == null ? null : b.wotaskdHost() );
 	}
 
 	/**
 	 * @return Port number to fetch wotaskd's configuration from
 	 */
 	public static int wotaskdPort() {
-		return Integer.parseInt( getRequiredProperty( "modulo.wotaskd.port" ) );
+		final modulo.config.BootstrapConfig b = _activeBootstrap;
+		return Integer.parseInt( bootstrapValue( "modulo.wotaskd.port", b == null ? null : b.wotaskdPort() ) );
 	}
 
 	/**
 	 * @return The password for getting configuration from the targeted wotaskd instance
 	 */
 	public static String wotaskdPassword() {
-		return getRequiredProperty( "modulo.wotaskd.password" );
+		final modulo.config.BootstrapConfig b = _activeBootstrap;
+		return bootstrapValue( "modulo.wotaskd.password", b == null ? null : b.wotaskdPassword() );
 	}
 
 	/**
@@ -226,16 +264,6 @@ public class Modulo {
 	 * @return The value of the java System property [propertyName]
 	 * @throws IllegalStateException if the property is not set
 	 */
-	private static String getRequiredProperty( final String propertyName ) {
-		final String value = System.getProperty( propertyName );
-
-		if( value == null ) {
-			throw new IllegalStateException( "The system property %s is not set".formatted( propertyName ) );
-		}
-
-		return value;
-	}
-
 	public void start() {
 
 		logger.info( "Starting modulo" );
@@ -412,7 +440,8 @@ public class Modulo {
 			throw new IllegalStateException( "The front-end is not running — nothing to reload (plain-proxy mode, or front-end startup failed)" );
 		}
 
-		final SitesConfig newConfig = SitesConfigReader.read( _frontendConfig.sitesFile() );
+		final SitesConfigReader.ParsedConfig parsed = SitesConfigReader.readWithBootstrap( _frontendConfig.sitesFile() );
+		final SitesConfig newConfig = parsed.sites();
 		final List<Site> sites = newConfig.frontendSites();
 
 		if( sites.isEmpty() ) {
@@ -442,7 +471,19 @@ public class Modulo {
 		logUnmappedDomains( sites );
 		_acmeManager.checkNow();
 
-		final String summary = "Reloaded sites config: %d site(s), %d ACME-managed".formatted( sites.size(), newConfig.acmeManagedSites().size() );
+		String summary = "Reloaded sites config: %d site(s), %d ACME-managed".formatted( sites.size(), newConfig.acmeManagedSites().size() );
+
+		// Reload granularity is per setting, not per file: sites/acme just
+		// applied, but the bootstrap tables only take effect at startup —
+		// when the file now disagrees with the running values, say so
+		// explicitly rather than silently ignoring the edit.
+		if( _activeBootstrap != null ) {
+			final List<String> changed = _activeBootstrap.changedSettings( parsed.bootstrap() );
+			if( !changed.isEmpty() ) {
+				summary += ". NOTE: restart-required setting(s) changed and NOT applied: %s — restart modulo to apply".formatted( String.join( ", ", changed ) );
+			}
+		}
+
 		logger.info( summary );
 		_events.add( Event.Severity.INFO, "config-reloaded", null, null, summary );
 		return summary;

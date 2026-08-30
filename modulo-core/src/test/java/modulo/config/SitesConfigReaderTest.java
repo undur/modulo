@@ -310,6 +310,62 @@ class SitesConfigReaderTest {
 	}
 
 	@Test
+	void parsesRootConfigWithBootstrapTables( @TempDir Path tmp ) throws IOException {
+		final Path file = tmp.resolve( "modulo.toml" );
+		Files.writeString( file, """
+				[frontend]
+				httpPort = 8080
+				httpsPort = 8443
+				http3 = false
+				accessLogDir = "/var/log/modulo"
+
+				[admin]
+				password = "hunter2"
+
+				[wotaskd]
+				host = "localhost"
+				port = 1085
+				password = "na"
+
+				[acme]
+				email = "op@example.com"
+				storage = "%s"
+
+				[[sites]]
+				hostnames = [ "www.example.com" ]
+				app = "MyApp"
+				""".formatted( tmp.resolve( "acme" ) ) );
+
+		final SitesConfigReader.ParsedConfig parsed = SitesConfigReader.readWithBootstrap( file );
+		assertEquals( 1, parsed.sites().sites().size() );
+		assertEquals( 8080, parsed.bootstrap().httpPort() );
+		assertEquals( "hunter2", parsed.bootstrap().adminPassword() );
+		assertEquals( "localhost", parsed.bootstrap().wotaskdHost() );
+		assertEquals( 1085, parsed.bootstrap().wotaskdPort() );
+
+		// bootstrap diffing: same file → nothing changed; edited port → named
+		assertTrue( parsed.bootstrap().changedSettings( parsed.bootstrap() ).isEmpty() );
+		final modulo.config.BootstrapConfig edited = new modulo.config.BootstrapConfig( 80, 8443, false, "/var/log/modulo", null, "hunter2", "localhost", 1085, "na" );
+		assertEquals( java.util.List.of( "frontend.httpPort" ), parsed.bootstrap().changedSettings( edited ) );
+	}
+
+	@Test
+	void fragmentsRejectBootstrapTables( @TempDir Path tmp ) throws IOException {
+		Files.writeString( tmp.resolve( "sites.toml" ), """
+				include = [ "frag.toml" ]
+				""" );
+		Files.writeString( tmp.resolve( "frag.toml" ), """
+				[frontend]
+				httpPort = 8080
+
+				[[sites]]
+				hostnames = [ "www.example.com" ]
+				tls = { mode = "manual", cert = "/c", key = "/k" }
+				""" );
+		assertThrows( SitesConfigException.class, () -> SitesConfigReader.read( tmp.resolve( "sites.toml" ) ) );
+	}
+
+	@Test
 	void rejectsCaptureReferenceBeyondGroupCount() {
 		assertThrows( SitesConfigException.class, () -> parse( """
 				{ "sites": [ { "hostnames": [ "www.example" ], "tls": { "mode": "manual", "cert": "/c", "key": "/k" },

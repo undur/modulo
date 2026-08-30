@@ -57,9 +57,9 @@ public class MDConfigPage extends NGComponent {
 
 		// Adaptor / wotaskd
 		if( !Modulo.isTesting() ) {
-			rows.add( new SettingRow( "Adaptor", "wotaskd host", Modulo.wotaskdHost(), "-Dmodulo.wotaskd.host", "yes" ) );
-			rows.add( new SettingRow( "Adaptor", "wotaskd port", String.valueOf( Modulo.wotaskdPort() ), "-Dmodulo.wotaskd.port", "yes" ) );
-			rows.add( new SettingRow( "Adaptor", "wotaskd password", "set", "-Dmodulo.wotaskd.password", "yes" ) );
+			rows.add( new SettingRow( "Adaptor", "wotaskd host", Modulo.wotaskdHost(), "[wotaskd] host (or -D override)", "yes" ) );
+			rows.add( new SettingRow( "Adaptor", "wotaskd port", String.valueOf( Modulo.wotaskdPort() ), "[wotaskd] port (or -D override)", "yes" ) );
+			rows.add( new SettingRow( "Adaptor", "wotaskd password", "set", "[wotaskd] password (or -D override)", "yes" ) );
 		}
 		rows.add( new SettingRow( "Adaptor", "Adaptor URL prefix", Modulo.ADAPTOR_URL, "-Dmodulo.adaptor-url", "yes" ) );
 		rows.add( new SettingRow( "Adaptor", "Adaptor config reload interval", MDStartPage.humanDuration( Modulo.DEFAULT_CONFIG_RELOAD_DURATION ), "hardcoded", "not yet" ) );

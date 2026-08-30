@@ -33,7 +33,23 @@ public class Application extends NGApplication {
 	 *
 	 * Override via {@code -Dmodulo.config-file=...} (mainly for testing).
 	 */
-	private static final Path CONFIG_FILE = Path.of( System.getProperty( "modulo.config-file", "/opt/webobjects/modulo.conf" ) );
+	private static final Path CONFIG_FILE = resolveConfigFile();
+
+	/**
+	 * The root config is TOML ({@code /opt/webobjects/modulo.toml} — one
+	 * file: [frontend]/[admin]/[wotaskd] bootstrap plus the sites config
+	 * with its include mechanism). The legacy properties file
+	 * ({@code modulo.conf} + a separate sites file) remains readable until
+	 * the format migration completes, chosen by what exists on disk.
+	 */
+	private static Path resolveConfigFile() {
+		final String override = System.getProperty( "modulo.config-file" );
+		if( override != null ) {
+			return Path.of( override );
+		}
+		final Path toml = Path.of( "/opt/webobjects/modulo.toml" );
+		return Files.isRegularFile( toml ) ? toml : Path.of( "/opt/webobjects/modulo.conf" );
+	}
 
 	private final Modulo _modulo;
 
@@ -52,9 +68,39 @@ public class Application extends NGApplication {
 	}
 
 	public Application() {
-		_config = loadConfig( CONFIG_FILE );
-		_modulo = new Modulo( Config.MODULO_PROXY_PORT, buildFrontendConfig( _config ) );
+		if( CONFIG_FILE.toString().endsWith( ".toml" ) ) {
+			modulo.config.BootstrapConfig bootstrap = null;
+			try {
+				bootstrap = modulo.config.SitesConfigReader.readWithBootstrap( CONFIG_FILE ).bootstrap();
+			}
+			catch( final Exception e ) {
+				logger.error( "Failed to parse {} — running without front-end: {}", CONFIG_FILE, e.getMessage() );
+			}
+			_config = new Properties();
+			if( bootstrap != null && bootstrap.adminPassword() != null ) {
+				_config.setProperty( "modulo.admin-password", bootstrap.adminPassword() );
+			}
+			_modulo = new Modulo( Config.MODULO_PROXY_PORT, bootstrap == null ? null : buildFrontendConfig( CONFIG_FILE, bootstrap ), bootstrap );
+		}
+		else {
+			_config = loadConfig( CONFIG_FILE );
+			_modulo = new Modulo( Config.MODULO_PROXY_PORT, buildFrontendConfig( _config ) );
+		}
 		_modulo.start();
+	}
+
+	/**
+	 * The FrontendConfig from a TOML root config: the sites file IS the
+	 * config file itself — one file, one include mechanism.
+	 */
+	static FrontendConfig buildFrontendConfig( final Path configFile, final modulo.config.BootstrapConfig bootstrap ) {
+		return new FrontendConfig(
+				configFile,
+				bootstrap.httpPort() == null ? 80 : bootstrap.httpPort(),
+				bootstrap.httpsPort() == null ? 443 : bootstrap.httpsPort(),
+				bootstrap.acmeWebroot() == null ? null : Path.of( bootstrap.acmeWebroot() ),
+				bootstrap.accessLogDir() == null ? null : Path.of( bootstrap.accessLogDir() ),
+				Boolean.TRUE.equals( bootstrap.http3() ) );
 	}
 
 	/**
