@@ -21,6 +21,7 @@ public class RequestStats {
 	private static class Cell {
 		long count;
 		long totalDurationMs;
+		long totalAppDurationMs;
 	}
 
 	/** Ring of minute buckets: epochMinute stamp → per-app cells. */
@@ -28,7 +29,12 @@ public class RequestStats {
 	@SuppressWarnings( "unchecked" )
 	private final Map<String, Cell>[] _buckets = new Map[WINDOW_MINUTES];
 
-	public synchronized void record( final String applicationName, final long durationMs ) {
+	/**
+	 * @param durationMs Total serving time: client request arrival → upstream exchange complete
+	 * @param appDurationMs App time: upstream request sent → response headers arrived — isolates
+	 *            connect + the app's processing from client-transfer effects
+	 */
+	public synchronized void record( final String applicationName, final long durationMs, final long appDurationMs ) {
 		final long minute = System.currentTimeMillis() / 60_000L;
 		final int index = (int)(minute % WINDOW_MINUTES);
 
@@ -40,10 +46,11 @@ public class RequestStats {
 		final Cell cell = _buckets[index].computeIfAbsent( applicationName, name -> new Cell() );
 		cell.count++;
 		cell.totalDurationMs += durationMs;
+		cell.totalAppDurationMs += appDurationMs;
 	}
 
 	/** Per-app aggregate over the whole window. */
-	public record AppTotals( String applicationName, long requests, long averageResponseMs ) {}
+	public record AppTotals( String applicationName, long requests, long averageResponseMs, long averageAppMs ) {}
 
 	/** The chart-ready view: minute labels (oldest first) and a count series per app, aligned to the labels. */
 	public record Snapshot( List<String> minuteLabels, Map<String, List<Long>> requestSeries, List<AppTotals> totals ) {}
@@ -63,7 +70,7 @@ public class RequestStats {
 		final List<String> labels = new ArrayList<>();
 		final Map<String, List<Long>> series = new LinkedHashMap<>();
 		apps.forEach( app -> series.put( app, new ArrayList<>() ) );
-		final Map<String, long[]> sums = new LinkedHashMap<>(); // app → [requests, totalMs]
+		final Map<String, long[]> sums = new LinkedHashMap<>(); // app → [requests, totalMs, appMs]
 
 		for( long minute = oldestMinute; minute <= nowMinute; minute++ ) {
 			final int index = (int)(minute % WINDOW_MINUTES);
@@ -74,9 +81,10 @@ public class RequestStats {
 				final Cell cell = bucket == null ? null : bucket.get( app );
 				series.get( app ).add( cell == null ? 0L : cell.count );
 				if( cell != null ) {
-					final long[] sum = sums.computeIfAbsent( app, a -> new long[2] );
+					final long[] sum = sums.computeIfAbsent( app, a -> new long[3] );
 					sum[0] += cell.count;
 					sum[1] += cell.totalDurationMs;
+					sum[2] += cell.totalAppDurationMs;
 				}
 			}
 		}
@@ -84,7 +92,9 @@ public class RequestStats {
 		final List<AppTotals> totals = new ArrayList<>();
 		for( final Map.Entry<String, long[]> entry : sums.entrySet() ) {
 			final long requests = entry.getValue()[0];
-			totals.add( new AppTotals( entry.getKey(), requests, requests == 0 ? 0 : entry.getValue()[1] / requests ) );
+			totals.add( new AppTotals( entry.getKey(), requests,
+					requests == 0 ? 0 : entry.getValue()[1] / requests,
+					requests == 0 ? 0 : entry.getValue()[2] / requests ) );
 		}
 		totals.sort( ( a, b ) -> Long.compare( b.requests(), a.requests() ) );
 

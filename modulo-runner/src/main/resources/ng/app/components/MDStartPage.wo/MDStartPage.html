@@ -24,12 +24,18 @@
 				<wo:if condition="$hasTraffic">
 					<table class="table table-sm mb-0">
 						<thead>
-							<tr><th>Application</th><th>Requests</th><th>Avg response</th></tr>
+							<tr>
+								<th>Application</th>
+								<th>Requests</th>
+								<th title="Upstream request sent until response headers arrived — connect plus the app's processing">Avg app</th>
+								<th title="Client request arrival until the response was fully transferred from the app — includes delivery to slow clients">Avg total</th>
+							</tr>
 						</thead>
 						<wo:repetition list="$appTotals" item="$currentTotal">
 							<tr>
 								<td><wo:str value="$currentTotal.applicationName" /></td>
 								<td><wo:str value="$currentTotal.requests" /></td>
+								<td><wo:str value="$currentTotal.averageAppMs" />ms</td>
 								<td><wo:str value="$currentTotal.averageResponseMs" />ms</td>
 							</tr>
 						</wo:repetition>

@@ -35,6 +35,10 @@ class ModuloProxy extends ProxyHandler.Reverse {
 	/** Request attribute carrying the ErrorCondition of a failed proxy attempt, read by ModuloErrorHandler. */
 	static final String ERROR_CONDITION_ATTRIBUTE = "modulo.error-condition";
 
+	/** Request attributes timestamping the upstream exchange (nanoTime), for the app-time vs total-time stats split. */
+	static final String UPSTREAM_BEGIN_NANOS_ATTRIBUTE = "modulo.upstream-begin-nanos";
+	static final String UPSTREAM_HEADERS_NANOS_ATTRIBUTE = "modulo.upstream-headers-nanos";
+
 	/** Request attributes recording which app/instance a request was routed to — set by the URI rewriter, read by response observers. */
 	static final String TARGET_APP_ATTRIBUTE = "modulo.target-app";
 	static final String TARGET_INSTANCE_ATTRIBUTE = "modulo.target-instance";
@@ -126,6 +130,12 @@ class ModuloProxy extends ProxyHandler.Reverse {
 	@Override
 	protected void addProxyHeaders( Request clientToProxyRequest, org.eclipse.jetty.client.Request proxyToServerRequest ) {
 		super.addProxyHeaders( clientToProxyRequest, proxyToServerRequest );
+
+		// Timestamp the start of the upstream attempt (this runs just before the
+		// request is sent, so the measurement includes connection acquisition).
+		// A failover retry overwrites it — the stats measure the attempt that
+		// actually succeeded.
+		clientToProxyRequest.setAttribute( UPSTREAM_BEGIN_NANOS_ATTRIBUTE, System.nanoTime() );
 
 		// Watch upstream responses for the refusing-new-sessions announcements
 		// (both dialects), attributing them to the instance the rewriter
@@ -220,6 +230,10 @@ class ModuloProxy extends ProxyHandler.Reverse {
 			public void onHeaders( final org.eclipse.jetty.client.Response serverToProxyResponse ) {
 				super.onHeaders( serverToProxyResponse );
 				ensureTruthfulWoinst( (Integer)clientToProxyRequest.getAttribute( TARGET_INSTANCE_ATTRIBUTE ), proxyToClientResponse.getHeaders() );
+				// Response headers arriving marks the end of "app time": WO apps
+				// build the full response before writing, so this is effectively
+				// when the app finished processing
+				clientToProxyRequest.setAttribute( UPSTREAM_HEADERS_NANOS_ATTRIBUTE, System.nanoTime() );
 			}
 
 			@Override
@@ -227,7 +241,18 @@ class ModuloProxy extends ProxyHandler.Reverse {
 				if( _requestStats != null && result.isSucceeded() ) {
 					final String applicationName = (String)clientToProxyRequest.getAttribute( TARGET_APP_ATTRIBUTE );
 					if( applicationName != null ) {
-						_requestStats.record( applicationName, java.util.concurrent.TimeUnit.NANOSECONDS.toMillis( System.nanoTime() - clientToProxyRequest.getBeginNanoTime() ) );
+						final long totalMs = java.util.concurrent.TimeUnit.NANOSECONDS.toMillis( System.nanoTime() - clientToProxyRequest.getBeginNanoTime() );
+
+						// App time: upstream request sent → response headers arrived.
+						// Isolates connect + app processing from client-transfer
+						// effects (the body read is backpressured by the client).
+						final Long upstreamBegin = (Long)clientToProxyRequest.getAttribute( UPSTREAM_BEGIN_NANOS_ATTRIBUTE );
+						final Long upstreamHeaders = (Long)clientToProxyRequest.getAttribute( UPSTREAM_HEADERS_NANOS_ATTRIBUTE );
+						final long appMs = upstreamBegin != null && upstreamHeaders != null
+								? java.util.concurrent.TimeUnit.NANOSECONDS.toMillis( upstreamHeaders - upstreamBegin )
+								: totalMs;
+
+						_requestStats.record( applicationName, totalMs, appMs );
 					}
 				}
 				super.onComplete( result );

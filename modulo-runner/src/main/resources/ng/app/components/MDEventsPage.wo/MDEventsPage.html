@@ -2,8 +2,13 @@
 	<div class="row">
 		<div class="col-lg-8 col-md-12">
 			<div class="card mb-3">
-				<div class="card-header">
-					<h3>Recent events</h3>
+				<div class="card-header d-flex justify-content-between align-items-center">
+					<h3 class="mb-0">Recent events</h3>
+					<wo:if condition="$hasEvents">
+						<form method="post" action="/events/clear" class="mb-0">
+							<button type="submit" class="btn btn-sm btn-outline-secondary">Clear</button>
+						</form>
+					</wo:if>
 				</div>
 				<wo:if condition="$hasEvents" negate="true">
 					<div class="card-body">Nothing noteworthy has happened since startup — which is exactly how we like it.</div>

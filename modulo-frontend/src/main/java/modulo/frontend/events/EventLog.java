@@ -31,6 +31,14 @@ public class EventLog {
 	}
 
 	/**
+	 * Empties the buffer — an operator drawing a line under handled events.
+	 * The underlying log files are untouched; this is view-state only.
+	 */
+	public synchronized void clear() {
+		events.clear();
+	}
+
+	/**
 	 * @return The buffered events, newest first
 	 */
 	public synchronized List<Event> recent() {

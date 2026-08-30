@@ -143,6 +143,7 @@ public class Application extends NGApplication {
 				.map( "/config", MDConfigPage.class )
 				.map( "/stats.json", this::statsJson )
 				.map( "/reload", this::reloadAction )
+				.map( "/events/clear", this::clearEventsAction )
 				.map( "/", MDStartPage.class );
 	}
 
@@ -156,6 +157,25 @@ public class Application extends NGApplication {
 		final String json = tools.jackson.databind.json.JsonMapper.builder().build().writeValueAsString( snapshot );
 		final NGResponse response = new NGResponse( json, 200 );
 		response.setHeader( "content-type", "application/json" );
+		return response;
+	}
+
+	/**
+	 * Empties the event buffer — the operator drawing a line under handled
+	 * events. POST only; the log files are untouched. Leaves a single INFO
+	 * event marking the epoch, so an empty-looking page is distinguishable
+	 * from a never-filled one.
+	 */
+	private NGActionResults clearEventsAction( final NGRequest request ) {
+		if( !"POST".equalsIgnoreCase( request.method() ) ) {
+			return new NGResponse( "Use POST to clear\n", 405 );
+		}
+
+		_modulo.events().clear();
+		_modulo.events().add( modulo.frontend.events.Event.Severity.INFO, "events-cleared", null, null, "Event log cleared by operator" );
+
+		final NGResponse response = new NGResponse( "", 302 );
+		response.setHeader( "Location", "/events" );
 		return response;
 	}
 
