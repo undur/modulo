@@ -15,27 +15,34 @@ import org.junit.jupiter.api.io.TempDir;
 class SitesConfigIncludeTest {
 
 	private static final String SITE_TEMPLATE = """
-			{ "sites": [ { "hostnames": [ "%s" ], "app": "%s", "tls": { "mode": "manual", "cert": "/c", "key": "/k" } } ] }
+			[[sites]]
+			hostnames = [ "%s" ]
+			app = "%s"
+			tls = { mode = "manual", cert = "/c", key = "/k" }
 			""";
 
 	private static Path writeMain( final Path dir, final String content ) throws IOException {
-		final Path main = dir.resolve( "sites.json" );
+		final Path main = dir.resolve( "sites.toml" );
 		Files.writeString( main, content );
 		return main;
 	}
 
 	@Test
 	void includesGlobMatchedFilesInSortedOrder( @TempDir Path tmp ) throws IOException {
-		// Mimics the /rebbi/<domain>/conf/site.json layout
+		// Mimics the /rebbi/<domain>/conf/site.toml layout
 		Files.createDirectories( tmp.resolve( "apps/beta/conf" ) );
 		Files.createDirectories( tmp.resolve( "apps/alpha/conf" ) );
 		Files.createDirectories( tmp.resolve( "apps/noconf" ) );
-		Files.writeString( tmp.resolve( "apps/beta/conf/site.json" ), SITE_TEMPLATE.formatted( "beta.example", "Beta" ) );
-		Files.writeString( tmp.resolve( "apps/alpha/conf/site.json" ), SITE_TEMPLATE.formatted( "alpha.example", "Alpha" ) );
+		Files.writeString( tmp.resolve( "apps/beta/conf/site.toml" ), SITE_TEMPLATE.formatted( "beta.example", "Beta" ) );
+		Files.writeString( tmp.resolve( "apps/alpha/conf/site.toml" ), SITE_TEMPLATE.formatted( "alpha.example", "Alpha" ) );
 
 		final Path main = writeMain( tmp, """
-				{ "include": [ "apps/*/conf/site.json" ],
-				  "sites": [ { "hostnames": [ "main.example" ], "app": "Main", "tls": { "mode": "manual", "cert": "/c", "key": "/k" } } ] }
+				include = [ "apps/*/conf/site.toml" ]
+
+				[[sites]]
+				hostnames = [ "main.example" ]
+				app = "Main"
+				tls = { mode = "manual", cert = "/c", key = "/k" }
 				""" );
 
 		final SitesConfig config = SitesConfigReader.read( main );
@@ -47,21 +54,26 @@ class SitesConfigIncludeTest {
 
 	@Test
 	void mainFileMayHoldOnlyAcmeAndIncludes( @TempDir Path tmp ) throws IOException {
-		Files.writeString( tmp.resolve( "one.json" ), SITE_TEMPLATE.formatted( "a.example", "A" ) );
+		Files.writeString( tmp.resolve( "one.toml" ), SITE_TEMPLATE.formatted( "a.example", "A" ) );
 		final Path main = writeMain( tmp, """
-				{ "include": [ "one.json" ] }
+				include = [ "one.toml" ]
 				""" );
 		assertEquals( 1, SitesConfigReader.read( main ).sites().size() );
 	}
 
 	@Test
 	void includedSitesUseTheMainFilesAcmeBlock( @TempDir Path tmp ) throws IOException {
-		Files.writeString( tmp.resolve( "acme-site.json" ), """
-				{ "sites": [ { "hostnames": [ "a.example" ], "app": "A" } ] }
+		Files.writeString( tmp.resolve( "acme-site.toml" ), """
+				[[sites]]
+				hostnames = [ "a.example" ]
+				app = "A"
 				""" );
 		final Path main = writeMain( tmp, """
-				{ "acme": { "email": "op@example.com", "storage": "/var/lib/modulo/acme" },
-				  "include": [ "acme-site.json" ] }
+				include = [ "acme-site.toml" ]
+
+				[acme]
+				email = "op@example.com"
+				storage = "/var/lib/modulo/acme"
 				""" );
 		final SitesConfig config = SitesConfigReader.read( main );
 		assertTrue( config.sites().getFirst().acmeManaged() );
@@ -70,38 +82,46 @@ class SitesConfigIncludeTest {
 
 	@Test
 	void rejectsAcmeBlockInIncludedFile( @TempDir Path tmp ) throws IOException {
-		Files.writeString( tmp.resolve( "bad.json" ), """
-				{ "acme": { "email": "x@example.com", "storage": "/s" }, "sites": [] }
+		Files.writeString( tmp.resolve( "bad.toml" ), """
+				sites = []
+
+				[acme]
+				email = "x@example.com"
+				storage = "/s"
 				""" );
 		final Path main = writeMain( tmp, """
-				{ "include": [ "bad.json" ] }
+				include = [ "bad.toml" ]
 				""" );
 		final SitesConfigException e = assertThrows( SitesConfigException.class, () -> SitesConfigReader.read( main ) );
-		assertTrue( e.getMessage().contains( "bad.json" ) );
+		assertTrue( e.getMessage().contains( "bad.toml" ) );
 	}
 
 	@Test
 	void rejectsDuplicateHostnameAcrossFilesNamingBoth( @TempDir Path tmp ) throws IOException {
-		Files.writeString( tmp.resolve( "one.json" ), SITE_TEMPLATE.formatted( "dup.example", "A" ) );
-		Files.writeString( tmp.resolve( "two.json" ), SITE_TEMPLATE.formatted( "dup.example", "B" ) );
+		Files.writeString( tmp.resolve( "one.toml" ), SITE_TEMPLATE.formatted( "dup.example", "A" ) );
+		Files.writeString( tmp.resolve( "two.toml" ), SITE_TEMPLATE.formatted( "dup.example", "B" ) );
 		final Path main = writeMain( tmp, """
-				{ "include": [ "one.json", "two.json" ] }
+				include = [ "one.toml", "two.toml" ]
 				""" );
 		final SitesConfigException e = assertThrows( SitesConfigException.class, () -> SitesConfigReader.read( main ) );
-		assertTrue( e.getMessage().contains( "one.json" ) );
-		assertTrue( e.getMessage().contains( "two.json" ) );
+		assertTrue( e.getMessage().contains( "one.toml" ) );
+		assertTrue( e.getMessage().contains( "two.toml" ) );
 	}
 
 	@Test
 	void missingExplicitIncludeFails_emptyGlobDoesNot( @TempDir Path tmp ) throws IOException {
 		final Path explicit = writeMain( tmp, """
-				{ "include": [ "nope.json" ] }
+				include = [ "nope.toml" ]
 				""" );
 		assertThrows( SitesConfigException.class, () -> SitesConfigReader.read( explicit ) );
 
 		final Path glob = writeMain( tmp, """
-				{ "sites": [ { "hostnames": [ "a.example" ], "app": "A", "tls": { "mode": "manual", "cert": "/c", "key": "/k" } } ],
-				  "include": [ "nothing/*/site.json" ] }
+				include = [ "nothing/*/site.toml" ]
+
+				[[sites]]
+				hostnames = [ "a.example" ]
+				app = "A"
+				tls = { mode = "manual", cert = "/c", key = "/k" }
 				""" );
 		assertEquals( 1, SitesConfigReader.read( glob ).sites().size() );
 	}
@@ -109,7 +129,7 @@ class SitesConfigIncludeTest {
 	@Test
 	void rejectsRecursiveGlobs( @TempDir Path tmp ) throws IOException {
 		final Path main = writeMain( tmp, """
-				{ "include": [ "apps/**/site.json" ] }
+				include = [ "apps/**/site.toml" ]
 				""" );
 		assertThrows( SitesConfigException.class, () -> SitesConfigReader.read( main ) );
 	}

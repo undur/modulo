@@ -15,9 +15,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import tools.jackson.core.JacksonException;
-import tools.jackson.core.json.JsonReadFeature;
 import tools.jackson.databind.DeserializationFeature;
-import tools.jackson.databind.json.JsonMapper;
 
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
@@ -28,8 +26,7 @@ import modulo.frontend.tls.acme.AcmeSettings;
 import modulo.rewrite.RewriteRule;
 
 /**
- * Reads modulo's native sites config — a TOML file (JSON remains readable
- * only as a migration transition, dispatched by file extension; issue #10):
+ * Reads modulo's native sites config — a TOML file:
  *
  * <pre>
  * include = [ "/apps/*&#47;conf/site.toml" ]
@@ -98,27 +95,9 @@ public class SitesConfigReader {
 
 	private static final Logger logger = LoggerFactory.getLogger( SitesConfigReader.class );
 
-	private static final JsonMapper JSON_MAPPER = JsonMapper.builder()
-			.enable( JsonReadFeature.ALLOW_JAVA_COMMENTS )
-			.enable( JsonReadFeature.ALLOW_TRAILING_COMMA )
+	private static final tools.jackson.dataformat.toml.TomlMapper MAPPER = tools.jackson.dataformat.toml.TomlMapper.builder()
 			.enable( DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES )
 			.build();
-
-	private static final tools.jackson.dataformat.toml.TomlMapper TOML_MAPPER = tools.jackson.dataformat.toml.TomlMapper.builder()
-			.enable( DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES )
-			.build();
-
-	/**
-	 * TOML is the operator-facing format; JSON support remains only until the
-	 * existing deployments finish migrating, then gets removed (issue #10).
-	 * Same DTOs, same validation, same error messages — only the parser
-	 * differs, chosen by file extension. (.toml parses as TOML; everything
-	 * else as JSON while the transition lasts — this collapses to TOML-only
-	 * when JSON support is dropped.)
-	 */
-	private static tools.jackson.databind.ObjectMapper mapperFor( final String source ) {
-		return source.endsWith( ".toml" ) ? TOML_MAPPER : JSON_MAPPER;
-	}
 
 	/** The raw shape of the main config file. Field names here are the config file's schema. */
 	record Root( Frontend frontend, Admin admin, Wotaskd wotaskd, Acme acme, List<String> include, List<SiteEntry> sites ) {}
@@ -198,7 +177,7 @@ public class SitesConfigReader {
 	private static Root parseRoot( final String json, final String source ) {
 		final Root root;
 		try {
-			root = mapperFor( source ).readValue( json, Root.class );
+			root = MAPPER.readValue( json, Root.class );
 		}
 		catch( final JacksonException e ) {
 			throw new SitesConfigException( "Failed to parse sites config %s: %s".formatted( source, e.getMessage() ), e );
@@ -231,7 +210,7 @@ public class SitesConfigReader {
 				for( final Path included : files ) {
 					final Fragment fragment;
 					try {
-						fragment = mapperFor( included.toString() ).readValue( Files.readString( included, StandardCharsets.UTF_8 ), Fragment.class );
+						fragment = MAPPER.readValue( Files.readString( included, StandardCharsets.UTF_8 ), Fragment.class );
 					}
 					catch( final JacksonException e ) {
 						throw new SitesConfigException( "Failed to parse included sites file %s: %s".formatted( included, e.getMessage() ), e );

@@ -41,9 +41,9 @@ class ApacheConfigImporterTest {
 
 		final List<Site> apacheSites = ApacheConfigReader.fromManifest( manifest ).read();
 		final Map<String, String> domainToApp = Map.of( "www.rebbi.is", "Rebbi" );
-		final String json = ApacheConfigImporter.toJson( apacheSites, domainToApp::get );
+		final String toml = ApacheConfigImporter.toToml( apacheSites, domainToApp::get );
 
-		final SitesConfig roundTripped = SitesConfigReader.parse( json, "imported" );
+		final SitesConfig roundTripped = SitesConfigReader.parse( toml, "imported" );
 
 		assertEquals( apacheSites, roundTripped.frontendSites() );
 		assertEquals( Map.of( "www.rebbi.is", "Rebbi", "rebbi.is", "Rebbi" ), roundTripped.domainToAppMap() );
@@ -71,7 +71,7 @@ class ApacheConfigImporterTest {
 		final List<Site> apacheSites = ApacheConfigReader.fromManifest( manifest ).read();
 		assertEquals( 2, apacheSites.size() );
 
-		final String json = ApacheConfigImporter.toJson( apacheSites, host -> null );
-		assertEquals( 1, SitesConfigReader.parse( json, "imported" ).sites().size() );
+		final String toml = ApacheConfigImporter.toToml( apacheSites, host -> null );
+		assertEquals( 1, SitesConfigReader.parse( toml, "imported" ).sites().size() );
 	}
 }

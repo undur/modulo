@@ -4,18 +4,14 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import tools.jackson.databind.json.JsonMapper;
 
 import modulo.DomainApp;
 import modulo.frontend.site.Site;
@@ -25,7 +21,7 @@ import modulo.frontend.site.Site;
  * into modulo's native sites config JSON.
  *
  * Reads Sites from a manifest file (one vhost-file path per line, {@code #}
- * comments allowed) and emits the JSON that {@link SitesConfigReader}
+ * comments allowed) and emits the TOML that {@link SitesConfigReader}
  * consumes, with every site in {@code manual} TLS mode pointing at the
  * vhosts' existing PEM paths. Run it once, review the output, point
  * {@code modulo.frontend.sites-file} at it — Apache is out of the loop.
@@ -49,23 +45,23 @@ public class ApacheConfigImporter {
 		}
 
 		final List<Site> sites = ApacheConfigReader.fromManifest( Path.of( args[0] ) ).read();
-		final String json = toJson( sites, DomainApp::appForHost );
+		final String toml = toToml( sites, DomainApp::appForHost );
 
 		if( args.length == 2 ) {
-			Files.writeString( Path.of( args[1] ), json, StandardCharsets.UTF_8 );
+			Files.writeString( Path.of( args[1] ), toml, StandardCharsets.UTF_8 );
 			System.err.println( "Wrote %d site(s) to %s".formatted( sites.size(), args[1] ) );
 		}
 		else {
-			System.out.println( json );
+			System.out.println( toml );
 		}
 	}
 
 	/**
 	 * @param appForHost Resolves a hostname to its app name; null means "no app known for this host"
-	 * @return The native sites config JSON for the given Sites
+	 * @return The native sites config TOML for the given Sites
 	 */
-	public static String toJson( final List<Site> sites, final Function<String, String> appForHost ) {
-		final List<Map<String, Object>> siteEntries = new ArrayList<>();
+	public static String toToml( final List<Site> sites, final Function<String, String> appForHost ) {
+		final StringBuilder toml = new StringBuilder();
 		final Set<String> seenPrimaries = new HashSet<>();
 
 		for( final Site site : sites ) {
@@ -86,15 +82,18 @@ public class ApacheConfigImporter {
 				logger.warn( "No app mapping found for any hostname of site {} — emitting it without an \"app\"", site.primaryHostname() );
 			}
 
-			final Map<String, Object> entry = new LinkedHashMap<>();
-			entry.put( "hostnames", site.allHostnames() );
+			toml.append( "[[sites]]\n" );
+			toml.append( "hostnames = [ " );
+			toml.append( String.join( ", ", site.allHostnames().stream().map( h -> "\"" + h + "\"" ).toList() ) );
+			toml.append( " ]\n" );
 			if( app != null ) {
-				entry.put( "app", app );
+				toml.append( "app = \"" ).append( app ).append( "\"\n" );
 			}
-			entry.put( "tls", Map.of( "mode", "manual", "cert", site.certPath().toString(), "key", site.keyPath().toString() ) );
-			siteEntries.add( entry );
+			toml.append( "tls = { mode = \"manual\", cert = \"" ).append( site.certPath() ).append( "\", key = \"" ).append( site.keyPath() ).append( "\" }\n" );
+			toml.append( "\n" );
 		}
 
-		return JsonMapper.builder().build().writerWithDefaultPrettyPrinter().writeValueAsString( Map.of( "sites", siteEntries ) );
+		return toml.toString().stripTrailing() + "\n";
 	}
+
 }
