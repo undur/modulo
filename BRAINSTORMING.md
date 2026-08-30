@@ -251,3 +251,9 @@ wrong direction:
 - **JVM is actually fine.** Caddy/Go gets more buzz, but modern Jetty
   is competitive with nginx for proxy workloads, and modulo lives in
   a JVM-shop deployment context. Java is the right choice here.
+
+- **Friendlier TOML footgun error**: when strict parsing finds a known
+  root key (`include`) inside a table (`acme.include`), hint that
+  top-level keys must precede the first `[section]` header instead of
+  the raw "Unrecognized property" message. Parked 2026-08-30 until the
+  mistake actually recurs in the wild.
