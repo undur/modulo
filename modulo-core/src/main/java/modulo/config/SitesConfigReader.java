@@ -28,28 +28,26 @@ import modulo.frontend.tls.acme.AcmeSettings;
 import modulo.rewrite.RewriteRule;
 
 /**
- * Reads modulo's native sites config — a single JSON file:
+ * Reads modulo's native sites config — a TOML file (JSON remains readable
+ * only as a migration transition, dispatched by file extension; issue #10):
  *
  * <pre>
- * {
- *   "acme": {
- *     "email": "operator@example.com",
- *     "storage": "/var/lib/modulo/acme",
- *     "directory": "letsencrypt"            // optional; also: "letsencrypt-staging" or a directory URI
- *   },
- *   "sites": [
- *     {
- *       "hostnames": [ "www.rebbi.is", "rebbi.is" ],
- *       "app": "Rebbi"
- *       // no "tls" — ACME is the default: modulo obtains and renews the cert itself
- *     },
- *     {
- *       "hostnames": [ "legacy.example" ],
- *       "app": "Legacy",
- *       "tls": { "mode": "manual", "cert": "/path/fullchain.pem", "key": "/path/privkey.pem" }
- *     }
- *   ]
- * }
+ * include = [ "/apps/*&#47;conf/site.toml" ]
+ *
+ * [acme]
+ * email     = "operator@example.com"
+ * storage   = "/var/lib/modulo/acme"
+ * directory = "letsencrypt"            # optional; also: "letsencrypt-staging" or a directory URI
+ *
+ * [[sites]]
+ * hostnames = [ "www.rebbi.is", "rebbi.is" ]
+ * app = "Rebbi"
+ * # no tls table — ACME is the default: modulo obtains and renews the cert itself
+ *
+ * [[sites]]
+ * hostnames = [ "legacy.example" ]
+ * app = "Legacy"
+ * tls = { mode = "manual", cert = "/path/fullchain.pem", key = "/path/privkey.pem" }
  * </pre>
  *
  * The first hostname is the site's primary (canonical) hostname; the rest are
@@ -61,15 +59,16 @@ import modulo.rewrite.RewriteRule;
  * block, and the site's cert/key paths are derived inside the ACME storage
  * directory. {@code "mode": "manual"} takes explicit PEM paths instead.
  *
- * A site may carry {@code "rewrites"} — an ordered list of URL rewrite rules
+ * A site may carry {@code rewrites} — an ordered list of URL rewrite rules
  * tried first-match-wins against the request path (only for paths outside the
- * adaptor URL space):
+ * adaptor URL space). TOML's single-quoted literal strings need no escaping,
+ * so regexes are written as-is:
  *
  * <pre>
- * "rewrites": [
- *   { "match": "^/$", "to": "/Apps/WebObjects/Strimillinn.woa/wa/default" },
- *   { "match": "^/app/([^/]+)/receipts$", "to": "/Apps/WebObjects/Strimillinn.woa/wa/AppAction/receipts?token=$1" },
- *   { "match": "^/policy$", "to": "/privacy", "redirect": "permanent" }
+ * rewrites = [
+ *   { match = '^/$', to = '/Apps/WebObjects/Strimillinn.woa/wa/default' },
+ *   { match = '^/app/([^/]+)/receipts$', to = '/Apps/WebObjects/Strimillinn.woa/wa/AppAction/receipts?token=$1' },
+ *   { match = '^/policy$', to = '/privacy', redirect = "permanent" },
  * ]
  * </pre>
  *
@@ -83,7 +82,7 @@ import modulo.rewrite.RewriteRule;
  * Apache's B). See {@link modulo.rewrite.RewriteRule} for full semantics.
  *
  * Sites may also live in separate files: the main file's {@code "include"}
- * lists paths or glob patterns (e.g. {@code "/rebbi/*&#47;conf/site.json"};
+ * lists paths or glob patterns (e.g. {@code "/rebbi/*&#47;conf/site.toml"};
  * relative patterns resolve against the main file's directory), and each
  * included file contributes a {@code "sites"} array of its own. The
  * deployment-wide blocks ({@code acme}, {@code include}) belong to the main
@@ -93,20 +92,35 @@ import modulo.rewrite.RewriteRule;
  * Parsing is strict on purpose: unknown fields, duplicate hostnames and
  * malformed entries all throw {@link SitesConfigException} rather than being
  * skipped — this file is the source of truth, so a typo should stop the
- * front-end from starting with half a config. {@code //} comments and
- * trailing commas are allowed as operator-friendliness.
+ * front-end from starting with half a config.
  */
 public class SitesConfigReader {
 
 	private static final Logger logger = LoggerFactory.getLogger( SitesConfigReader.class );
 
-	private static final JsonMapper MAPPER = JsonMapper.builder()
+	private static final JsonMapper JSON_MAPPER = JsonMapper.builder()
 			.enable( JsonReadFeature.ALLOW_JAVA_COMMENTS )
 			.enable( JsonReadFeature.ALLOW_TRAILING_COMMA )
 			.enable( DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES )
 			.build();
 
-	/** The raw JSON shape of the main config file. Field names here are the config file's schema. */
+	private static final tools.jackson.dataformat.toml.TomlMapper TOML_MAPPER = tools.jackson.dataformat.toml.TomlMapper.builder()
+			.enable( DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES )
+			.build();
+
+	/**
+	 * TOML is the operator-facing format; JSON support remains only until the
+	 * existing deployments finish migrating, then gets removed (issue #10).
+	 * Same DTOs, same validation, same error messages — only the parser
+	 * differs, chosen by file extension. (.toml parses as TOML; everything
+	 * else as JSON while the transition lasts — this collapses to TOML-only
+	 * when JSON support is dropped.)
+	 */
+	private static tools.jackson.databind.ObjectMapper mapperFor( final String source ) {
+		return source.endsWith( ".toml" ) ? TOML_MAPPER : JSON_MAPPER;
+	}
+
+	/** The raw shape of the main config file. Field names here are the config file's schema. */
 	record Root( Acme acme, List<String> include, List<SiteEntry> sites ) {}
 
 	/**
@@ -133,11 +147,11 @@ public class SitesConfigReader {
 	 * Parses a config given as a string. Since there is no file to resolve
 	 * against, {@code include} is not allowed here.
 	 *
-	 * @param json The config file's content
+	 * @param content The config file's content
 	 * @param source Where the content came from, for error messages (typically the file path)
 	 */
-	public static SitesConfig parse( final String json, final String source ) {
-		final Root root = parseRoot( json, source );
+	public static SitesConfig parse( final String content, final String source ) {
+		final Root root = parseRoot( content, source );
 		if( root.include() != null && !root.include().isEmpty() ) {
 			throw new SitesConfigException( "\"include\" in %s requires the config to be read from a file (patterns resolve relative to it)".formatted( source ) );
 		}
@@ -152,7 +166,7 @@ public class SitesConfigReader {
 	private static Root parseRoot( final String json, final String source ) {
 		final Root root;
 		try {
-			root = MAPPER.readValue( json, Root.class );
+			root = mapperFor( source ).readValue( json, Root.class );
 		}
 		catch( final JacksonException e ) {
 			throw new SitesConfigException( "Failed to parse sites config %s: %s".formatted( source, e.getMessage() ), e );
@@ -185,7 +199,7 @@ public class SitesConfigReader {
 				for( final Path included : files ) {
 					final Fragment fragment;
 					try {
-						fragment = MAPPER.readValue( Files.readString( included, StandardCharsets.UTF_8 ), Fragment.class );
+						fragment = mapperFor( included.toString() ).readValue( Files.readString( included, StandardCharsets.UTF_8 ), Fragment.class );
 					}
 					catch( final JacksonException e ) {
 						throw new SitesConfigException( "Failed to parse included sites file %s: %s".formatted( included, e.getMessage() ), e );

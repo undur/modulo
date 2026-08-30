@@ -81,7 +81,7 @@ Copy the bundle over and give it a service. The conventional layout:
 ```
 /opt/webobjects/apps/modulo-runner.woa    the bundle
 /opt/webobjects/modulo.conf               runtime properties (Part 2)
-/opt/webobjects/sites.json                sites config (Part 2)
+/opt/webobjects/sites.toml                sites config (Part 2)
 /opt/webobjects/acme/                     ACME state, created by modulo
 /opt/webobjects/log/modulo.log            log output
 ```
@@ -121,19 +121,20 @@ AmbientCapabilities=CAP_NET_BIND_SERVICE
 Create `/opt/webobjects/modulo.conf`:
 
 ```properties
-modulo.frontend.sites-file = /opt/webobjects/sites.json
+modulo.frontend.sites-file = /opt/webobjects/sites.toml
 ```
 
-Create `/opt/webobjects/sites.json` with your first site (see Part 2
+Create `/opt/webobjects/sites.toml` with your first site (see Part 2
 for every field):
 
-```json
-{
-  "acme": { "email": "you@example.com", "storage": "/opt/webobjects/acme" },
-  "sites": [
-    { "hostnames": [ "www.example.com", "example.com" ], "app": "MyApp" }
-  ]
-}
+```toml
+[acme]
+email   = "you@example.com"
+storage = "/opt/webobjects/acme"
+
+[[sites]]
+hostnames = [ "www.example.com", "example.com" ]
+app = "MyApp"
 ```
 
 Then:
@@ -146,7 +147,7 @@ tail -f /opt/webobjects/log/modulo.log
 On a healthy first start you'll see, in order:
 
 ```
-Front-end configured with 1 site(s) from /opt/webobjects/sites.json
+Front-end configured with 1 site(s) from /opt/webobjects/sites.toml
 No certificate on disk for www.example.com yet — writing self-signed placeholder
 Loaded 1 certificate(s) into in-memory keystore
 Ordering certificate for www.example.com covering [www.example.com, example.com]
@@ -182,7 +183,7 @@ job. From the outside in:
 |---|---|---|---|
 | Launch properties | systemd unit / launcher args | How to reach wotaskd; where modulo.conf lives | service restart |
 | `modulo.conf` | `/opt/webobjects/modulo.conf` (properties) | Whether/where the front-end runs: ports, sites-file path | service restart |
-| Sites config | `sites.json` + optional per-app fragment files (JSON) | Everything per-site: hostnames, routing, TLS, redirects — plus the deployment-wide `acme` block | `POST /reload` — no restart |
+| Sites config | `sites.toml` + optional per-app fragment files (TOML) | Everything per-site: hostnames, routing, TLS, redirects — plus the deployment-wide `acme` block | `POST /reload` — no restart |
 
 Plus one directory that is **state, not configuration**: the ACME
 storage directory. Modulo writes it; you never edit it (but you can
@@ -217,26 +218,23 @@ the front-end simply doesn't start.
 
 ### Layer 3: the sites config
 
-One main JSON file, optionally spread across per-app fragment files.
-`//` comments and trailing commas are allowed everywhere. The **main
-file** holds the deployment-wide blocks and (optionally) sites of its
-own:
+One main TOML file, optionally spread across per-app fragment files.
+(JSON files with the same schema remain readable by extension during
+the migration away from the original JSON format; new configs should
+be TOML.) The **main file** holds the deployment-wide blocks and
+(optionally) sites of its own:
 
-```json
-{
-  // Required if any site uses ACME (i.e. normally):
-  "acme": {
-    "email": "you@example.com",          // required — CA sends expiry warnings here
-    "storage": "/opt/webobjects/acme",   // required — modulo-owned state dir
-    "directory": "letsencrypt"           // optional — or "letsencrypt-staging", or any directory URI
-  },
+```toml
+# Optional: pull in sites from other files
+include = [ "/apps/*/conf/site.toml" ]
 
-  // Optional: pull in sites from other files
-  "include": [ "/apps/*/conf/site.json" ],
+# Required if any site uses ACME (i.e. normally):
+[acme]
+email     = "you@example.com"        # required — CA sends expiry warnings here
+storage   = "/opt/webobjects/acme"   # required — modulo-owned state dir
+directory = "letsencrypt"            # optional — or "letsencrypt-staging", or any directory URI
 
-  // Optional if include covers everything:
-  "sites": [ ... ]
-}
+# Optional if include covers everything: [[sites]] entries of its own
 ```
 
 **Fragment files** contain only a `"sites"` array — `acme` and
@@ -244,14 +242,16 @@ own:
 each application's sites next to the rest of that application's
 configuration:
 
-```json
-// /apps/myapp/conf/site.json — one app and its domains
-{
-  "sites": [
-    { "hostnames": [ "www.example.com", "example.com" ], "app": "MyApp" },
-    { "hostnames": [ "www.other-brand.com" ], "app": "MyApp" }
-  ]
-}
+```toml
+# /apps/myapp/conf/site.toml — one app and its domains
+
+[[sites]]
+hostnames = [ "www.example.com", "example.com" ]
+app = "MyApp"
+
+[[sites]]
+hostnames = [ "www.other-brand.com" ]
+app = "MyApp"
 ```
 
 Include rules: relative patterns resolve against the main file's
@@ -275,18 +275,21 @@ warning; matches load in sorted path order.
 with a redirect) — modulo's replacement for Apache `RewriteRule`
 directives:
 
-```json
-{
-  "hostnames": [ "www.example.com" ],
-  "app": "MyApp",
-  "rewrites": [
-    { "match": "^/$", "to": "/Apps/WebObjects/MyApp.woa/wa/default" },
-    { "match": "^/things/([^/]+)$", "to": "/Apps/WebObjects/MyApp.woa/wa/thing?id=$1" },
-    { "match": "^/old-name$", "to": "/new-name", "redirect": "permanent" },
-    { "match": "^(.*)$", "to": "/Apps/WebObjects/MyApp.woa/wa/RouteAction/handler?url=$1", "appendQuery": true }
-  ]
-}
+```toml
+[[sites]]
+hostnames = [ "www.example.com" ]
+app = "MyApp"
+rewrites = [
+  { match = '^/$', to = '/Apps/WebObjects/MyApp.woa/wa/default' },
+  { match = '^/things/([^/]+)$', to = '/Apps/WebObjects/MyApp.woa/wa/thing?id=$1' },
+  { match = '^/old-name$', to = '/new-name', redirect = "permanent" },
+  { match = '^(.*)$', to = '/Apps/WebObjects/MyApp.woa/wa/RouteAction/handler?url=$1', appendQuery = true },
+]
 ```
+
+Note the single-quoted TOML strings: they are literal (no escaping),
+so regexes like `'^/entry/(\d+)\.html$'` are written exactly as the
+regex reads.
 
 | Field | Required | Meaning |
 |---|---|---|
@@ -383,9 +386,11 @@ canonical hostname.
 2. Drop a fragment file into the app's folder (or add a site object to
    an existing fragment / the main file):
 
-   ```json
-   // /apps/newapp/conf/site.json
-   { "sites": [ { "hostnames": [ "www.newsite.com", "newsite.com" ], "app": "NewApp" } ] }
+   ```toml
+   # /apps/newapp/conf/site.toml
+   [[sites]]
+   hostnames = [ "www.newsite.com", "newsite.com" ]
+   app = "NewApp"
    ```
 
    If the file location matches an existing `include` pattern, nothing
@@ -417,6 +422,7 @@ at every step.
    ```sh
    CP=$(find /opt/webobjects/apps/modulo-runner.woa/Contents/Resources/Java -name '*.jar' | tr '\n' ':')
    java -cp "$CP" modulo.config.ApacheConfigImporter /path/to/manifest.txt sites.json
+   # (the importer still emits JSON — readable during the transition; convert to TOML at leisure)
    ```
 
    Review the output — sites whose hostnames couldn't be mapped to an

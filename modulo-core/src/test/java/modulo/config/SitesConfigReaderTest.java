@@ -237,6 +237,79 @@ class SitesConfigReaderTest {
 	}
 
 	@Test
+	void parsesTomlMainFileWithIncludedTomlFragment( @TempDir Path tmp ) throws IOException {
+		Files.createDirectories( tmp.resolve( "app/conf" ) );
+		Files.writeString( tmp.resolve( "sites.toml" ), """
+				# operator comments are native
+				include = [ "app/conf/site.toml" ]
+
+				[acme]
+				email = "op@example.com"
+				storage = "%s"
+				""".formatted( tmp.resolve( "acme" ) ) );
+		Files.writeString( tmp.resolve( "app/conf/site.toml" ), """
+				[[sites]]
+				hostnames = [ "www.example.com", "example.com" ]
+				app = "MyApp"
+				rewrites = [
+				  { match = '^/entry/(\\d+)\\.html$', to = '/Apps/WebObjects/MyApp.woa/wa/entry?id=$1' },
+				  { match = '^/old$', to = '/new', redirect = "permanent" },
+				]
+
+				[[sites]]
+				hostnames = [ "manual.example" ]
+				canonicalRedirect = false
+				tls = { mode = "manual", cert = "/c.pem", key = "/k.pem" }
+				""" );
+
+		final SitesConfig config = SitesConfigReader.read( tmp.resolve( "sites.toml" ) );
+		assertEquals( 2, config.sites().size() );
+
+		final ConfiguredSite site = config.sites().getFirst();
+		assertEquals( "www.example.com", site.site().primaryHostname() );
+		assertEquals( "MyApp", site.app() );
+		assertTrue( site.acmeManaged() );
+		assertEquals( 2, site.rewrites().size() );
+		// TOML literal strings carry regex backslashes through unescaped
+		assertEquals( "^/entry/(\\d+)\\.html$", site.rewrites().getFirst().pattern().pattern() );
+		assertEquals( modulo.rewrite.RewriteRule.Redirect.PERMANENT, site.rewrites().get( 1 ).redirect() );
+
+		final ConfiguredSite manual = config.sites().get( 1 );
+		assertFalse( manual.site().canonicalRedirect() );
+		assertFalse( manual.acmeManaged() );
+	}
+
+	@Test
+	void tomlIsStrictAboutUnknownFields( @TempDir Path tmp ) throws IOException {
+		final Path file = tmp.resolve( "sites.toml" );
+		Files.writeString( file, """
+				[[sites]]
+				hostnames = [ "www.example.com" ]
+				aplication = "Typo"
+				tls = { mode = "manual", cert = "/c", key = "/k" }
+				""" );
+		assertThrows( SitesConfigException.class, () -> SitesConfigReader.read( file ) );
+	}
+
+	@Test
+	void mixedFormatIncludesWorkDuringMigration( @TempDir Path tmp ) throws IOException {
+		Files.writeString( tmp.resolve( "sites.toml" ), """
+				include = [ "a.toml", "b.json" ]
+				""" );
+		Files.writeString( tmp.resolve( "a.toml" ), """
+				[[sites]]
+				hostnames = [ "toml.example" ]
+				tls = { mode = "manual", cert = "/c", key = "/k" }
+				""" );
+		Files.writeString( tmp.resolve( "b.json" ), """
+				{ "sites": [ { "hostnames": [ "json.example" ], "tls": { "mode": "manual", "cert": "/c", "key": "/k" } } ] }
+				""" );
+
+		final SitesConfig config = SitesConfigReader.read( tmp.resolve( "sites.toml" ) );
+		assertEquals( 2, config.sites().size() );
+	}
+
+	@Test
 	void rejectsCaptureReferenceBeyondGroupCount() {
 		assertThrows( SitesConfigException.class, () -> parse( """
 				{ "sites": [ { "hostnames": [ "www.example" ], "tls": { "mode": "manual", "cert": "/c", "key": "/k" },
