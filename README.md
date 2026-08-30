@@ -41,7 +41,7 @@ termination, HTTP/2, SNI across many sites, automatic certificates
 via ACME, HTTP→HTTPS redirects, compression. The goal is for modulo
 to fully replace the Apache + certbot layer. The front-end is in
 production use for a real fleet of sites and now has its own
-configuration format (a single JSON sites file) and native ACME
+configuration format (a single TOML config file) and native ACME
 issuance/renewal — but it's still young: the ACME path is fresh out
 of development, and a handful of operator-facing rough edges remain.
 See [SETUP.md](docs/SETUP.md) for setting it up.
@@ -93,8 +93,31 @@ ProxyPassReverse /Apps/WebObjects http://proxyhost:1400/Apps/WebObjects
 Modulo's TLS front-end can run *alongside* the plain proxy when
 configured. This lets you incrementally move sites off Apache without
 breaking the rest. [SETUP.md](docs/SETUP.md) covers the full setup — the
-`modulo.conf` properties, the sites config format, automatic
-certificates, and migrating an existing Apache + certbot deployment.
+`modulo.toml` config, automatic certificates, and migrating an
+existing Apache + certbot deployment.
+
+## WebSockets
+
+Modulo tunnels WebSockets to your apps with zero configuration —
+something Apache + `mod_WebObjects` never could (`mod_WebObjects`
+requires the prefork MPM, which is mutually exclusive with Apache's
+own WebSocket-capable modules). An upgrade request is routed exactly
+like any HTTP request (hostname mapping, instance pinning,
+round-robin), then both sides switch to a raw byte tunnel: no frame
+parsing, so subprotocols and extensions pass through untouched.
+
+On the app side, `wo-adaptor-jetty` provides the WebSocket server
+support — register a handler and go:
+
+```java
+WOWebSocketRegistry.register( "/ws/chat", ChatWebSocketHandler.class );
+```
+
+Live demo, served through modulo:
+[www.skoffin.com/websocket](https://www.skoffin.com/websocket) — an
+echo endpoint with a small test page, from the
+[AjaxPlayground](https://github.com/undur/wonder-slim/tree/main/AjaxPlayground)
+test app.
 
 ## Documentation
 
