@@ -55,6 +55,14 @@ deployments that put modulo behind another web server.
 
 Compact record; the details live in git history and SETUP.md.
 
+- **Iteration 6 — WebSocket proxying** *(2026-08-30)*: raw tunnel
+  after handshake — upgrades intercepted ahead of the proxy, routed
+  with the proxy's own logic, handshake forwarded upstream, byte-pump
+  both ways on 101 (Jetty core's UPGRADE_CONNECTION_ATTRIBUTE
+  mechanism client-side, virtual-thread pump upstream-side). Verified
+  end-to-end on hz1 against AjaxPlayground's /ws/echo (wo-adaptor-jetty)
+  through wss://. SSE still unverified — carried as a note under
+  operability.
 - **Iteration 1 — Front-end mode** *(2026)*: TLS termination, SNI
   keystore with hot reload, redirects, compression, challenge
   passthrough; sites imported from Apache vhost files as scaffolding.
@@ -88,45 +96,6 @@ Compact record; the details live in git history and SETUP.md.
 ---
 
 ## Coming up
-
-### Iteration 6 — WebSocket proxying
-
-WebSocket through modulo **does not work today**, established by source
-inspection (2026-08-29) rather than suspicion: Jetty's `ProxyHandler`
-(which `ModuloProxy` extends) has no handling for `Upgrade`, 101
-responses or post-upgrade tunneling — and it strips the `Connection`
-header as hop-by-hop, so the handshake headers never even reach the
-app. The app sees a plain GET, the browser expects a 101, the WS
-connection fails.
-
-This hasn't bitten because classic WO apps don't use WebSockets — but
-ng-objects now supports them, so this must land before ng apps behind
-modulo start relying on that.
-
-Chosen approach: **raw tunnel after handshake**. Detect
-`Upgrade: websocket` ahead of the proxy handler, forward the handshake
-to the upstream on a dedicated connection, and on 101 switch both
-sides to raw byte-pumping. Jetty's `ConnectHandler` does this dance
-for CONNECT tunnels (`TunnelSupport` / `EndPoint` upgrade) — the
-machinery to crib from. Transparent to WS extensions, no frame
-parsing or re-encoding per message.
-
-Considered and set aside: terminate-and-reinitiate (front-side WS
-server + upstream WS client) — supported APIs and a path to
-WS-over-HTTP/2 (RFC 8441) later, but heavier and re-encodes every
-frame; waiting for upstream Jetty `ProxyHandler` support — nothing in
-12.1.x, not worth blocking on.
-
-Notes for the implementation:
-
-- The h2 front-end doesn't complicate this: browsers use HTTP/1.1 for
-  `wss://` unless the server advertises extended CONNECT (we don't),
-  so the upgrade always arrives on the HTTP/1.1 path.
-- Long-lived connections need idle-timeout attention on both the
-  connector and the proxy-to-upstream hop.
-- SSE appears structurally fine already (streamed response;
-  `text/event-stream` isn't gzip'd so no buffering) — verify while in
-  here.
 
 ### Config schema growth
 
