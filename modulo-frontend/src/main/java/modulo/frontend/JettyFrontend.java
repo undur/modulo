@@ -318,6 +318,12 @@ public class JettyFrontend {
 
 		final HttpConnectionFactory http1 = new HttpConnectionFactory( httpsConfig );
 		final HTTP2ServerConnectionFactory http2 = new HTTP2ServerConnectionFactory( httpsConfig );
+		// Don't advertise RFC 8441 extended CONNECT: Jetty enables it by
+		// default, which makes Firefox/Chrome attempt WebSocket-over-HTTP/2
+		// (CONNECT with :protocol) — invisible to the WebSocket tunnel, which
+		// works on HTTP/1.1 upgrades. Without the advertisement every browser
+		// falls back to HTTP/1.1 for wss://, which the tunnel handles.
+		http2.setConnectProtocolEnabled( false );
 		final ALPNServerConnectionFactory alpn = new ALPNServerConnectionFactory();
 		alpn.setDefaultProtocol( http1.getProtocol() );
 		final SslConnectionFactory ssl = new SslConnectionFactory( sslContextFactory, alpn.getProtocol() );
