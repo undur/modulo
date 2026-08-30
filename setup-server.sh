@@ -6,9 +6,11 @@
 #   JavaMonitor  :56789  its web UI — where you add apps and instances
 #   modulo       :80/443 the front-facing HTTPS server / reverse proxy
 #
-# Run from your workstation: builds locally, installs remotely over ssh
-# (assumes root ssh access). The script doubles as the setup guide —
-# read it top to bottom; it is the same process SETUP.md describes.
+# Standalone: run it from anywhere on your workstation — it fetches the
+# sources itself, builds locally, and installs remotely over ssh
+# (assumes git, maven, a local JDK, and root ssh to the server). The
+# script doubles as the setup guide — read it top to bottom; it is the
+# same process SETUP.md describes.
 #
 # Usage: ./setup-server.sh <server-hostname> <acme-email>
 set -euo pipefail
@@ -17,15 +19,29 @@ SERVER_HOST="${1:?usage: setup-server.sh <server-hostname> <acme-email>}"
 ACME_EMAIL="${2:?usage: setup-server.sh <server-hostname> <acme-email>}"
 SERVER="root@${SERVER_HOST}"
 
-MODULO_REPO="$(cd "$(dirname "$0")" && pwd)"
-STACK_REPO="${MODULO_REPO}/../wonder-slim-deployment"   # wotaskd + JavaMonitor sources
+WORKDIR="${MODULO_SETUP_DIR:-${HOME}/.modulo-setup}"    # sources + build cache live here between runs
 JVM="/opt/jdk-26/bin/java"                              # must already exist ON THE SERVER
 
-### 1 — Build the three bundles locally ##################################
+### 1 — Fetch the sources and build the three bundles ####################
+# This whole section disappears the day prebuilt release archives exist —
+# it then becomes a single download-and-unpack. Until that day: clone (or
+# update) the two repos and build.
+#
 # -Dlaunch.jvm bakes the server's JVM path into each bundle's launcher;
 # without it the launcher execs a bare `java`, which is not on PATH in
 # systemd's spartan environment, and the app dies instantly. (Ask us
 # how we know.)
+
+mkdir -p "${WORKDIR}"
+clone_or_update() {  # $1 = repo url, $2 = directory
+  if [ -d "${WORKDIR}/$2/.git" ]; then git -C "${WORKDIR}/$2" pull -q
+  else git clone -q "$1" "${WORKDIR}/$2"; fi
+}
+clone_or_update https://github.com/undur/modulo.git                  modulo
+clone_or_update https://github.com/undur/wonder-slim-deployment.git  wonder-slim-deployment
+
+MODULO_REPO="${WORKDIR}/modulo"
+STACK_REPO="${WORKDIR}/wonder-slim-deployment"
 
 ( cd "${STACK_REPO}/sjip-core"        && mvn -q -DskipTests clean install )
 ( cd "${STACK_REPO}/wotaskd"          && mvn -q -DskipTests clean package "-Dlaunch.jvm=${JVM}" )
