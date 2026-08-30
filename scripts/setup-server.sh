@@ -10,7 +10,7 @@
 # sources itself, builds locally, and installs remotely over ssh
 # (assumes git, maven, a local JDK, and root ssh to the server). The
 # script doubles as the setup guide — read it top to bottom; it is the
-# same process SETUP.md describes.
+# same process docs/SETUP.md describes.
 #
 # Usage: ./setup-server.sh <server-hostname> <acme-email>
 set -euo pipefail
@@ -187,5 +187,5 @@ keep 1085 (wotaskd) and 56789 (JavaMonitor) restricted.
 
 Adding an app: deploy its .woa, add it in JavaMonitor, then drop
 /rebbi/<domain>/conf/site.toml with its hostnames and POST /reload —
-SETUP.md Part 3 has the recipes.
+docs/SETUP.md Part 3 has the recipes.
 EOF
