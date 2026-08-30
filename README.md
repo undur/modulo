@@ -44,10 +44,10 @@ production use for a real fleet of sites and now has its own
 configuration format (a single JSON sites file) and native ACME
 issuance/renewal — but it's still young: the ACME path is fresh out
 of development, and a handful of operator-facing rough edges remain.
-See [SETUP.md](SETUP.md) for setting it up.
+See [SETUP.md](docs/SETUP.md) for setting it up.
 
-See [ROADMAP.md](ROADMAP.md) for where modulo is heading and
-[BRAINSTORMING.md](BRAINSTORMING.md) for ideas being considered.
+See [ROADMAP.md](docs/ROADMAP.md) for where modulo is heading and
+[BRAINSTORMING.md](docs/BRAINSTORMING.md) for ideas being considered.
 
 ## Repository layout
 
@@ -92,17 +92,17 @@ ProxyPassReverse /Apps/WebObjects http://proxyhost:1400/Apps/WebObjects
 
 Modulo's TLS front-end can run *alongside* the plain proxy when
 configured. This lets you incrementally move sites off Apache without
-breaking the rest. [SETUP.md](SETUP.md) covers the full setup — the
+breaking the rest. [SETUP.md](docs/SETUP.md) covers the full setup — the
 `modulo.conf` properties, the sites config format, automatic
 certificates, and migrating an existing Apache + certbot deployment.
 
 ## Documentation
 
-- [SETUP.md](SETUP.md) — setting up modulo as a front-facing HTTPS
+- [SETUP.md](docs/SETUP.md) — setting up modulo as a front-facing HTTPS
   server, or as a plain proxy behind another web server.
-- [ROADMAP.md](ROADMAP.md) — what's next, iteration by iteration, and
+- [ROADMAP.md](docs/ROADMAP.md) — what's next, iteration by iteration, and
   deliberate non-goals.
-- [BRAINSTORMING.md](BRAINSTORMING.md) — ideas being considered but
+- [BRAINSTORMING.md](docs/BRAINSTORMING.md) — ideas being considered but
   not committed to.
 
 Design discussions live in the issue tracker.

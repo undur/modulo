@@ -9,9 +9,9 @@ via ACME, and reverse-proxying to your apps.
 3. **[Recipes](#part-3--recipes)** — adding domains, adding apps, migrating
    from Apache + certbot
 
-For what modulo is and why, see [README.md](README.md). For where it's
+For what modulo is and why, see [README.md](../README.md). For where it's
 heading, see [ROADMAP.md](ROADMAP.md). Prefer reading shell to prose?
-[setup-server.sh](setup-server.sh) performs the whole initial setup —
+[setup-server.sh](../scripts/setup-server.sh) performs the whole initial setup —
 full stack: wotaskd, JavaMonitor, modulo — and doubles as the guide.
 
 ## The pieces
