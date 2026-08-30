@@ -2,13 +2,10 @@
 
 This document covers running modulo as a front-facing HTTPS server for
 a WO/ng-objects deployment — TLS termination, automatic certificates
-via ACME, and reverse-proxying to your apps. No Apache, no certbot.
-
-It is organized in three parts:
+via ACME, and reverse-proxying to your apps.
 
 1. **[Initial setup](#part-1--initial-setup)** — from zero to a running server
-2. **[Configuration architecture](#part-2--configuration-architecture)** — what's
-   configured where, and what needs to be set
+2. **[Configuration](#part-2--configuration)** — every setting, in one file
 3. **[Recipes](#part-3--recipes)** — adding domains, adding apps, migrating
    from Apache + certbot
 
@@ -34,14 +31,12 @@ heading, see [ROADMAP.md](ROADMAP.md).
   sites), answers ACME challenges, redirects HTTP→HTTPS and aliases →
   canonical hostname, and proxies to the right app instance.
 - **wotaskd** tells modulo which apps exist and where their instances
-  listen. Modulo re-reads this every 10 seconds — a freshly started
-  app may 500 for a few seconds until the topology poll catches up.
-- Which hostname routes to which app comes from modulo's own sites
-  config (Part 2).
+  listen. Modulo re-reads this every 10 seconds.
+- Which hostname routes to which app comes from modulo's config
+  (Part 2).
 
 Modulo also always runs a plain-HTTP proxy connector (default port
-1400) — useful as a safety net and for traffic from a legacy web
-server during migration.
+1400).
 
 ---
 
@@ -50,11 +45,11 @@ server during migration.
 ### Prerequisites
 
 - A JDK matching the build (the poms currently target Java 25).
-- `wotaskd` running and reachable, with its config password.
+- `wotaskd` running and reachable.
 - DNS for your sites pointing at the server.
-- Ports 80/443 free (stop Apache/nginx first) and open in the
-  firewall. **Port 80 must be reachable from the public internet** —
-  ACME HTTP-01 challenges arrive there.
+- Ports 80/443 free and open in the firewall. **Port 80 must be
+  reachable from the public internet** — ACME HTTP-01 challenges
+  arrive there.
 
 ### Build
 
@@ -67,8 +62,7 @@ the server's JVM path into the launcher:
 ( cd modulo-runner && mvn clean package -Dlaunch.jvm=/opt/jdk-26/bin/java )
 ```
 
-This produces `modulo-runner/target/modulo-runner.woa`, a WO-style
-application bundle.
+This produces `modulo-runner/target/modulo-runner.woa`.
 
 > **Always build with `clean`** when producing a deployment bundle — a
 > non-clean build can leave jars from older dependency versions inside
@@ -76,12 +70,9 @@ application bundle.
 
 ### Install on the server
 
-Copy the bundle over and give it a service. The conventional layout:
-
 ```
 /opt/webobjects/apps/modulo-runner.woa    the bundle
-/opt/webobjects/modulo.toml               root config (Part 2)
-/opt/webobjects/sites.toml                sites config (Part 2)
+/opt/webobjects/modulo.toml               config (Part 2)
 /opt/webobjects/acme/                     ACME state, created by modulo
 /opt/webobjects/log/modulo.log            log output
 ```
@@ -94,11 +85,7 @@ Description=modulo
 After=network.target
 
 [Service]
-ExecStart=/opt/webobjects/apps/modulo-runner.woa/modulo-runner \
-  -Dmodulo.wotaskd.host=localhost \
-  -Dmodulo.wotaskd.port=1085 \
-  -Dmodulo.wotaskd.password=CHANGEME \
-  -Xms128m -Xmx256m
+ExecStart=/opt/webobjects/apps/modulo-runner.woa/modulo-runner -Xms128m -Xmx256m
 StandardOutput=append:/opt/webobjects/log/modulo.log
 StandardError=inherit
 Restart=on-failure
@@ -155,16 +142,15 @@ SslContextFactory reloaded with refreshed keystore
 ```
 
 The TLS connector starts immediately on a self-signed placeholder and
-hot-swaps to the real Let's Encrypt certificate seconds later — no
-second restart. Verify from outside:
+hot-swaps to the real certificate seconds later. Verify from outside:
 
 ```sh
 curl -sI https://www.example.com/         # 200, real certificate
 curl -sI http://www.example.com/          # 301 → https
 ```
 
-> **Trying things out?** Set `"directory": "letsencrypt-staging"` in
-> the `acme` block while experimenting. Let's Encrypt production
+> **Trying things out?** Set `directory = "letsencrypt-staging"` in
+> the `[acme]` table while experimenting. Let's Encrypt production
 > rate-limits aggressively (5 failed validations per hostname per
 > hour); staging is free to fail against. Flip to production (remove
 > the line) once a site validates end-to-end, and delete the site's
@@ -173,26 +159,22 @@ curl -sI http://www.example.com/          # 301 → https
 
 ---
 
-## Part 2 — Configuration architecture
+## Part 2 — Configuration
 
-Modulo's configuration lives in three layers, each with a distinct
-job. From the outside in:
-
-| Layer | Where | What it configures | Changes require |
-|---|---|---|---|
-| Root config, bootstrap tables | `/opt/webobjects/modulo.toml`: `[frontend]`, `[admin]`, `[wotaskd]` | Ports, admin password, how to reach wotaskd | service restart (a `/reload` that changes these answers with an explicit "restart required" notice) |
-| Root config, sites part | same file: `[acme]`, `include`, `[[sites]]` + per-app fragment files | Everything per-site: hostnames, routing, TLS, redirects | `POST /reload` — no restart |
-
-Plus one directory that is **state, not configuration**: the ACME
-storage directory. Modulo writes it; you never edit it (but you can
-read it — everything is plain PEM).
-
-### The root config: modulo.toml
-
-One TOML file, `/opt/webobjects/modulo.toml` (override the location
+One TOML file: `/opt/webobjects/modulo.toml` (override the location
 with `-Dmodulo.config-file=...`). Without it, modulo runs as a plain
-reverse proxy on port 1400 only. It holds three restart-required
-bootstrap tables, then the sites config with its include mechanism.
+reverse proxy on port 1400 only.
+
+Two kinds of settings live in it:
+
+| Settings | Changes require |
+|---|---|
+| `[frontend]`, `[admin]`, `[wotaskd]` | restart |
+| `include`, `[acme]`, `[[sites]]` (+ fragment files) | `POST /reload` |
+
+A reload that touches restart-required settings answers with an
+explicit "restart required" notice — nothing is silently ignored.
+
 **Top-level keys (`include`) must appear before the first table
 header** — that's TOML, not modulo.
 
@@ -204,7 +186,6 @@ httpPort     = 80                    # plain-HTTP connector (redirects + ACME ch
 httpsPort    = 443                   # TLS connector
 http3        = false                 # HTTP/3 (QUIC) — leave off for multi-site, see roadmap
 accessLogDir = "/opt/webobjects/log/access"   # per-site access logs; unset disables
-# acmeWebroot = "..."                # transitional: external certbot's HTTP-01 webroot
 
 [admin]
 password = "..."     # guards the admin pages (HTTP Basic, any username).
@@ -215,29 +196,20 @@ password = "..."     # guards the admin pages (HTTP Basic, any username).
 host     = "myserver.example"        # where wotaskd runs
 port     = 1085                      # its config port
 password = "..."                     # its config password
-# (each may be overridden with -Dmodulo.wotaskd.* for local testing)
 
 [acme]                               # required if any site uses ACME (i.e. normally)
 email     = "you@example.com"        # required — CA sends expiry warnings here
 storage   = "/opt/webobjects/acme"   # required — modulo-owned state dir
 directory = "letsencrypt"            # optional — or "letsencrypt-staging", or any directory URI
 
-# ...plus [[sites]] entries of its own, optional if include covers everything
+# ...plus [[sites]] entries, optional if include covers everything
 ```
 
-**Reload granularity is per setting, not per file:** `POST /reload`
-applies `[[sites]]`/`[acme]`/`include` changes immediately; edits to
-the three bootstrap tables are detected and answered with an explicit
-"restart-required setting(s) changed and NOT applied" notice.
+### Fragment files
 
-(A legacy layout — `modulo.conf` properties file plus a separate
-sites file, wotaskd settings as `-D` flags — remains readable while
-migrations last, chosen automatically by what exists on disk.)
-
-**Fragment files** contain only a `"sites"` array — `acme` and
-`include` belong to the main file alone. This is the layout that keeps
-each application's sites next to the rest of that application's
-configuration:
+Sites can live in separate files — one per app, next to the rest of
+that app's configuration. Fragments hold only `[[sites]]` entries;
+`include` and `[acme]` belong to the main file:
 
 ```toml
 # /apps/myapp/conf/site.toml — one app and its domains
@@ -257,20 +229,20 @@ recursive `**`; a pattern **without** wildcards must name an existing
 file, while a wildcard pattern matching nothing is just a logged
 warning; matches load in sorted path order.
 
-**The site object** — the unit of configuration:
+### The site entry
 
 | Field | Required | Meaning |
 |---|---|---|
 | `hostnames` | yes | All hostnames the site answers for. The **first is the canonical hostname**; the rest are aliases that 301-redirect to it. |
 | `app` | no | Upstream app name, as known to wotaskd. Omit for a site that terminates TLS but proxies nothing (warned at startup). |
-| `tls` | no | **Omitted = ACME**: modulo obtains and renews the certificate. Or `{ "mode": "manual", "cert": "/path/fullchain.pem", "key": "/path/privkey.pem" }` for certs you manage yourself. |
+| `tls` | no | **Omitted = ACME**: modulo obtains and renews the certificate. Or `{ mode = "manual", cert = "/path/fullchain.pem", key = "/path/privkey.pem" }` for certs you manage yourself. |
 | `canonicalRedirect` | no (`true`) | 301 alias hostnames → canonical hostname. |
 | `httpsRedirect` | no (`true`) | 301 plain HTTP → HTTPS. |
 | `rewrites` | no | Ordered URL rewrite rules — see below. |
 
-**Rewrite rules** map friendly URLs into adaptor URL space (or answer
-with a redirect) — modulo's replacement for Apache `RewriteRule`
-directives:
+### Rewrite rules
+
+Map friendly URLs into adaptor URL space, or answer with a redirect:
 
 ```toml
 [[sites]]
@@ -284,59 +256,53 @@ rewrites = [
 ]
 ```
 
-Note the single-quoted TOML strings: they are literal (no escaping),
-so regexes like `'^/entry/(\d+)\.html$'` are written exactly as the
-regex reads.
+Single-quoted TOML strings are literal (no escaping), so regexes like
+`'^/entry/(\d+)\.html$'` are written exactly as the regex reads.
 
 | Field | Required | Meaning |
 |---|---|---|
 | `match` | yes | Java regex, matched against the request path. Unanchored — anchor with `^` and `$`. |
 | `to` | yes | Substitution target; `$1`–`$9` insert capture groups (`$$` for a literal `$`). A path for internal rewrites; a path or absolute URL for redirects. |
 | `redirect` | no | Omitted = internal rewrite (the request proceeds to the site's `app` under the new path). `"temporary"` = 302, `"permanent"` = 301. |
-| `appendQuery` | no (`false`) | When `to` has its own query part, also append the request's original query after it (Apache's `QSA`). Without it, a target query replaces the original; a target *without* a query always keeps the original. |
-| `encodeCaptures` | no (`false`) | URL-encode each substituted capture (Apache's `B`) — for captures that become query parameter values. |
+| `appendQuery` | no (`false`) | When `to` has its own query part, also append the request's original query after it. Without it, a target query replaces the original; a target *without* a query always keeps the original. |
+| `encodeCaptures` | no (`false`) | URL-encode each substituted capture — for captures that become query parameter values. |
 
-Rules are tried in order; the **first match wins** (Apache's `[L]`,
-always on). Rules only apply to paths *outside* the adaptor URL space —
-a request that is already `/Apps/WebObjects/...` routes untouched, so
-app-generated URLs bypass the rules and a catch-all `^(.*)$` can't
-loop. Invalid regexes, unknown `redirect` values and `$N` references
-beyond the pattern's group count are config errors (refused at
-startup/reload like any other).
+Rules are tried in order; **first match wins**. Rules only apply to
+paths *outside* the adaptor URL space — a request that is already
+`/Apps/WebObjects/...` routes untouched, so app-generated URLs bypass
+the rules and a catch-all `^(.*)$` can't loop.
 
-**Strictness is a feature.** Unknown fields (typos), duplicate
-hostnames (across all files, with both file names in the error), a
-site using ACME with no `acme` block, `manual` mode missing a path —
-all refuse to start the front-end, with a message naming the file and
-site. The plain proxy keeps running, so a config typo degrades service
-rather than taking it down. Hostnames are case-insensitive and
-normalized to lowercase.
+### Strictness
 
-**Applying sites-config changes** doesn't need a restart — POST to
-`/reload` (same admin guard as `/overview`, which also has it as a
-button):
+Unknown fields (typos), duplicate hostnames (across all files, both
+file names in the error), invalid regexes, an ACME site with no
+`[acme]` table — all refuse to load, with a message naming the file
+and site. The plain proxy keeps running, so a config typo degrades
+service rather than taking it down. Hostnames are case-insensitive.
+
+### Reload
 
 ```sh
 curl -X POST -u :yourpassword https://yourserver/reload
 ```
 
-Routing, redirect policy, the keystore and the ACME-managed set all
-swap in place; a new ACME site starts on a placeholder cert and gets
-its real one seconds later. Reload is validation-first: a config that
-doesn't parse is rejected with the exact error (HTTP 422) and the
-running configuration is untouched. Changes to the bootstrap tables
-([frontend]/[admin]/[wotaskd]) still require a restart — a reload that
-touches them says so explicitly in its response.
+Routing, redirects, rewrites, the keystore and the ACME-managed set
+all swap in place; a new ACME site starts on a placeholder cert and
+gets its real one seconds later. Reload is validation-first: a config
+that doesn't parse is rejected with the exact error (HTTP 422) and the
+running configuration is untouched. Also available as a button on
+`/overview`.
 
 ### The ACME storage directory (state, not config)
+
+Modulo writes it; you never edit it (but you can read it — everything
+is plain PEM):
 
 ```
 <storage>/account-key.pem            ACME account key (created on first use)
 <storage>/sites/<host>/cert.pem      full chain, PEM
 <storage>/sites/<host>/key.pem       private key, PKCS#8 PEM
 ```
-
-Behavior around it:
 
 - A managed site with no cert on disk gets a **self-signed
   placeholder** at startup so TLS binds immediately; the real
@@ -360,28 +326,19 @@ Add it to the site's `hostnames` array (first position = canonical;
 anywhere else = alias):
 
 ```diff
--  "hostnames": [ "www.example.com", "example.com" ],
-+  "hostnames": [ "www.example.com", "example.com", "example.org" ],
+-hostnames = [ "www.example.com", "example.com" ]
++hostnames = [ "www.example.com", "example.com", "example.org" ]
 ```
 
 Make sure DNS for the new name points at the server, then
 `POST /reload`. The renewal check notices the certificate no longer
 covers all configured hostnames and reissues it with the new name —
-typically live within seconds:
-
-```
-Certificate for www.example.com does not cover all configured hostnames [...] — reissuing
-Ordering certificate for www.example.com covering [www.example.com, example.com, example.org]
-Obtained certificate for www.example.com — valid until <date>
-```
-
-With `canonicalRedirect` on (the default), the new alias 301s to the
-canonical hostname.
+typically live within seconds.
 
 ### Adding a new site (new domain → an app)
 
 1. Point the domain's DNS at the server.
-2. Drop a fragment file into the app's folder (or add a site object to
+2. Drop a fragment file into the app's folder (or add a site entry to
    an existing fragment / the main file):
 
    ```toml
@@ -393,8 +350,7 @@ canonical hostname.
 
    If the file location matches an existing `include` pattern, nothing
    else needs wiring. `"NewApp"` must be the name wotaskd knows the
-   app by — a name wotaskd doesn't recognize is warned
-   (`points at apps unknown to wotaskd`).
+   app by.
 3. `POST /reload`. Watch for placeholder → `Ordering` → `Obtained`,
    then verify:
 
@@ -404,14 +360,13 @@ canonical hostname.
 
 ### Removing a site
 
-Delete its site object (or fragment file) and `POST /reload`.
+Delete its site entry (or fragment file) and `POST /reload`.
 Optionally delete its directory under `<storage>/sites/` — nothing
 renews it once it's out of the config.
 
 ### Migrating from Apache + certbot
 
-The pieces are designed for an incremental migration with a fallback
-at every step.
+Incremental, with a fallback at every step.
 
 1. **Generate the sites config from your Apache vhosts.** The importer
    reads a manifest (one vhost-file path per line) and emits sites in
@@ -419,20 +374,21 @@ at every step.
 
    ```sh
    CP=$(find /opt/webobjects/apps/modulo-runner.woa/Contents/Resources/Java -name '*.jar' | tr '\n' ':')
-   java -cp "$CP" modulo.config.ApacheConfigImporter /path/to/manifest.txt sites.json
-   # (the importer still emits JSON — readable during the transition; convert to TOML at leisure)
+   java -cp "$CP" modulo.config.ApacheConfigImporter /path/to/manifest.txt sites-imported.toml
    ```
 
    Review the output — sites whose hostnames couldn't be mapped to an
    app are emitted without an `app` and warned about.
 
-2. **Point modulo at it**: set `modulo.frontend.sites-file`, stop
-   Apache, start modulo. Behavior should match — same sites, same
-   certbot certs, now served by modulo.
+2. **Serve through modulo**: put the imported sites into
+   `modulo.toml` (inline or via `include`), stop Apache, start modulo.
+   Behavior should match — same sites, same certbot certs, now served
+   by modulo.
 
 3. **Move sites to ACME** (one, several, or all at once): add the
-   `acme` block, delete the sites' `tls` blocks, restart, watch the
-   issuance log lines. Then retire that site's certbot renewal.
+   `[acme]` table, delete the sites' `tls` entries, `POST /reload`,
+   watch the issuance log lines. Then retire that site's certbot
+   renewal.
 
 4. **Done when no `manual` site remains**: disable certbot entirely
    (`systemctl disable --now certbot.timer`); `/etc/letsencrypt` is
@@ -460,8 +416,8 @@ curl -s https://www.example.com/ -o /dev/null -w '%{http_code} ssl:%{ssl_verify_
 
 ## Troubleshooting
 
-- **Front-end didn't start, plain proxy did.** Almost always a sites
-  config error — the log names the file, site and field. Deliberately
+- **Front-end didn't start, plain proxy did.** Almost always a config
+  error — the log names the file, site and field. Deliberately
   non-fatal so the rest keeps serving.
 - **Challenge failures** (`HTTP-01 challenge for <host> ended as INVALID`).
   The CA couldn't fetch `http://<host>/.well-known/acme-challenge/...`
