@@ -105,14 +105,19 @@ ssh "${SERVER}" "
 "
 
 ### 3 — Server layout ####################################################
-# The stack owns /opt/webobjects and everything runs as the unprivileged
-# webobjects user. Apps you deploy later conventionally get per-app homes
-# elsewhere (we use /rebbi/<domain>/{wo,conf,log}) — the include pattern
-# in modulo.toml below picks their site files up.
+# The stack owns /opt: the JDK sits in /opt/jdk-<version>, everything
+# else under /opt/webobjects — one folder per job, listed below, with
+# modulo.toml joining at its root in section 5. Everything runs as the
+# unprivileged webobjects user. Apps you deploy later conventionally get
+# per-app homes elsewhere (we use /rebbi/<domain>/{wo,conf,log}) — the
+# include pattern in modulo.toml picks their site files up.
 
 ssh "${SERVER}" "
   id webobjects >/dev/null 2>&1 || useradd --system --create-home webobjects
-  mkdir -p /opt/webobjects/apps /opt/webobjects/conf /opt/webobjects/log/access /opt/webobjects/acme
+  mkdir -p /opt/webobjects/apps        # the stack's own .woa bundles: wotaskd, JavaMonitor, modulo-runner
+  mkdir -p /opt/webobjects/conf        # SiteConfig.xml — wotaskd's config store
+  mkdir -p /opt/webobjects/log/access  # one log per service; per-site access logs in access/
+  mkdir -p /opt/webobjects/acme        # ACME account key + issued certificates
 "
 
 ### 4 — Upload the bundles ###############################################
