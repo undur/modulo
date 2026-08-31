@@ -70,6 +70,13 @@ is the chronology.
 - **Release archives**: downloadable prebuilt bundles, collapsing
   setup-server.sh's clone-and-build section to download-and-unpack —
   and removing the hidden dependency on the author's Maven settings.
+- **setup-server.sh options**: let the user pick the JDK distribution
+  and version (Adoptium/Temurin a suitable default — apt-updated or
+  API-fetched — instead of hardcoded Oracle 26, a non-LTS whose
+  updates end 2026-09); let the user set the wotaskd/JavaMonitor
+  password at install (means the script writing an initial
+  SiteConfig.xml with the password field, and mirroring it into
+  modulo.toml's [wotaskd] table).
 
 ## Larger arcs
 
