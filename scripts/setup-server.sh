@@ -84,12 +84,9 @@ STACK_REPO="${WORKDIR}/wonder-slim-deployment"
 ( cd "${MODULO_REPO}/modulo-core"     && mvn -q clean install )
 ( cd "${MODULO_REPO}/modulo-runner"   && mvn -q clean package "-Dlaunch.jvm=${JVM}" )
 
-### 2 — Server layout ####################################################
-# The stack owns /opt/webobjects. Apps you deploy later conventionally
-# get per-app homes elsewhere (we use /rebbi/<domain>/{wo,conf,log}) —
-# the include pattern in modulo.toml below picks their site files up.
-# A missing JVM is installed, matching the arch and your chosen
-# distribution/version (JDK_DIST/JDK_VERSION above).
+### 2 — Install a JDK on the server, if missing ##########################
+# Matching the machine's arch and your chosen distribution/version
+# (JDK_DIST/JDK_VERSION above).
 
 ssh "${SERVER}" "
   set -e
@@ -105,11 +102,20 @@ ssh "${SERVER}" "
     mkdir -p /opt/jdk-${JDK_VERSION} && tar -xzf /tmp/jdk.tgz -C /opt/jdk-${JDK_VERSION} --strip-components=1 && rm /tmp/jdk.tgz
   fi
   test -x ${JVM} || { echo 'ERROR: JVM install failed' >&2; exit 1; }
+"
+
+### 3 — Server layout ####################################################
+# The stack owns /opt/webobjects and everything runs as the unprivileged
+# webobjects user. Apps you deploy later conventionally get per-app homes
+# elsewhere (we use /rebbi/<domain>/{wo,conf,log}) — the include pattern
+# in modulo.toml below picks their site files up.
+
+ssh "${SERVER}" "
   id webobjects >/dev/null 2>&1 || useradd --system --create-home webobjects
   mkdir -p /opt/webobjects/apps /opt/webobjects/conf /opt/webobjects/log/access /opt/webobjects/acme
 "
 
-### 3 — Upload the bundles ###############################################
+### 4 — Upload the bundles ###############################################
 # Existing bundles are moved aside first, so re-running the script is a
 # stack upgrade rather than an error.
 
@@ -121,7 +127,7 @@ scp -q -r "${STACK_REPO}/wotaskd/target/wotaskd.woa"           "${SERVER}:/opt/w
 scp -q -r "${STACK_REPO}/JavaMonitor/target/JavaMonitor.woa"   "${SERVER}:/opt/webobjects/apps/"
 scp -q -r "${MODULO_REPO}/modulo-runner/target/modulo-runner.woa" "${SERVER}:/opt/webobjects/apps/"
 
-### 4 — modulo's config: one TOML file ###################################
+### 5 — modulo's config: one TOML file ###################################
 # Note: top-level keys (`include`) must come before the first [table] —
 # that's TOML's rule, not modulo's. The first site maps the server's own
 # hostname to modulo's built-in admin/status app, so the moment the
@@ -167,9 +173,11 @@ app = "Modulo"           # modulo's own admin pages, served through itself
 EOF
 fi
 
-# An initial SiteConfig.xml carrying the stack password (hashed) — this
-# is wotaskd's config store, and the same password guards JavaMonitor's
-# UI (log in there with the PLAINTEXT from the closing banner).
+### 6 — wotaskd's config: an initial SiteConfig.xml ######################
+# wotaskd's config store, carrying the stack password (hashed). The same
+# password guards JavaMonitor's UI — log in there with the PLAINTEXT
+# from the closing banner. Written only when absent, same rule as above.
+
 if ssh "${SERVER}" "test -e /opt/webobjects/conf/SiteConfig.xml"; then
   echo "SiteConfig.xml exists — keeping it (stack password unchanged)"
   STACK_PASSWORD="(unchanged — the existing SiteConfig's password applies)"
@@ -191,7 +199,7 @@ ssh "${SERVER}" "cat > /opt/webobjects/conf/SiteConfig.xml" << EOF
 EOF
 fi
 
-### 5 — systemd units ####################################################
+### 7 — systemd units ####################################################
 # JavaMonitor runs as its own service, NOT as a wotaskd-managed app —
 # the watcher shouldn't depend on the thing it watches. Modulo binds
 # 80/443 unprivileged via AmbientCapabilities.
@@ -238,7 +246,7 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
 
-### 6 — Log rotation, ownership, start ###################################
+### 8 — Log rotation, ownership, start ###################################
 # (modulo rotates its per-site access logs itself; this covers the
 # three service logs)
 
@@ -251,7 +259,7 @@ ssh "${SERVER}" '
   systemctl restart wotaskd javamonitor modulo
 '
 
-### 7 — Firewall: expose only ssh, 80 and 443 ###########################
+### 9 — Firewall: expose only ssh, 80 and 443 ############################
 # Cloud images often ship with NO firewall (Hetzner does), which would
 # leave wotaskd and JavaMonitor — which manage your apps — answering
 # the whole internet. Applied only when no ruleset exists yet, so an
@@ -282,7 +290,7 @@ NFTEOF
   fi
 '
 
-### 8 — What you have now ################################################
+### 10 — What you have now ###############################################
 
 cat << EOF
 
