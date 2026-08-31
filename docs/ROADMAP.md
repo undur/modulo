@@ -17,6 +17,11 @@ is the chronology.
   defaults (currently 5s connect / 30s idle, not configurable).
   Long-running apps (file processing, uploads) need this; the config
   channel and the operator UI for it already exist.
+- **Request filtering and rate limiting.** Deny rules for scanner
+  paths (reusing the rewrite machinery), a per-client token bucket
+  answering 429, and accept-time auto-tempban — design sketch in
+  BRAINSTORMING.md, prompted by the 2026-08-31 scan (6.2k requests
+  in 6 minutes from one IP against www.rebbi.is).
 - **The tuning surface.** The config page inventories every knob the
   server runs with, most marked "configurable: not yet". Work down the
   list into the root config with scoped resolution: hardcoded default

@@ -66,10 +66,38 @@ from rotation, restore on recovery) enable "app is restarting → serve
 a maintenance page instead of the first user eating a 502". Pairs
 naturally with per-site error responses (#5).
 
-### Connection-level rate limiting and caps
+### Request filtering and rate limiting
 
-A single client opening 10K connections is currently undefended.
-Cheap to add on Jetty; easy to forget until it bites.
+Grounded in a real sample: on 2026-08-31 a single IP fired 6,204
+requests at www.rebbi.is in ~6 minutes (~17/sec, curl UA, HTTP/2) —
+a vulnerability scanner walking `/etc/passwd`, `/.env` and friends —
+on top of the constant background of `wp-json`/`/admin` probes. The
+apps answered 404 in 0–1 ms so it cost nothing, but the same scan
+against an expensive 404 path, or ten scanners at once, is real load.
+Three cheap layers before app dispatch, all keyed on the true peer
+address (modulo *is* the edge — X-Forwarded-For is never trusted):
+
+1. **Deny rules** — reuse the per-site rewrite machinery: a `deny`
+   action beside redirect/rewrite, first-match-wins, with a global
+   default list for the eternal probes (dotfiles, `/.env`, `wp-*`,
+   `/etc/`). Answer shape via the condition→responder layer — plain
+   404, or drop-without-response for the rudest paths. Requests die
+   before touching an app.
+2. **Per-client token bucket** — rate + burst, global default with
+   per-site override; in-memory map with periodic sweep; over-limit
+   answers 429 through the responder layer. Request-level on purpose:
+   the scanner rode h2 multiplexing, which a connection-level cap
+   never sees.
+3. **Auto-tempban** — N denied/429 responses within a window bans the
+   IP for T minutes, checked at accept-time before any parsing. Turns
+   6,204 log lines into a couple dozen. In-memory with TTL, surfaced
+   on the dashboard (current bans, events, manual unban).
+
+Plus the original connection-level caps (max connections per IP —
+cheap on Jetty) as the outermost guard against the 10K-connections
+client. Non-goals: payload inspection (WAF territory) and distributed
+state — single-node in-memory matches the stack's scale, and bans are
+allowed to be forgotten on restart.
 
 ### Unix domain sockets for modulo → app
 
