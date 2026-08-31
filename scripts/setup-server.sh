@@ -171,7 +171,38 @@ ssh "${SERVER}" '
   systemctl enable --now wotaskd javamonitor modulo
 '
 
-### 7 — What you have now ################################################
+### 7 — Firewall: expose only ssh, 80 and 443 ###########################
+# Cloud images often ship with NO firewall (Hetzner does), which would
+# leave wotaskd and JavaMonitor — which manage your apps — answering
+# the whole internet. Applied only when no ruleset exists yet, so an
+# already-firewalled server is left untouched.
+
+ssh "${SERVER}" '
+  if nft list ruleset 2>/dev/null | grep -q .; then
+    echo "firewall: existing ruleset found — leaving it alone"
+  else
+    cat > /etc/nftables.conf << "NFTEOF"
+#!/usr/sbin/nft -f
+flush ruleset
+table inet filter {
+	chain input {
+		type filter hook input priority 0; policy drop;
+		iif "lo" accept
+		ct state established,related accept
+		ip protocol icmp accept
+		ip6 nexthdr ipv6-icmp accept
+		tcp dport { 22, 80, 443 } accept
+	}
+	chain forward { type filter hook forward priority 0; policy drop; }
+	chain output { type filter hook output priority 0; policy accept; }
+}
+NFTEOF
+    nft -f /etc/nftables.conf && systemctl enable --now nftables
+    echo "firewall: ssh/80/443 only"
+  fi
+'
+
+### 8 — What you have now ################################################
 
 cat << EOF
 
@@ -181,9 +212,6 @@ Stack is up on ${SERVER_HOST}:
                                    — real certificate arrives seconds after first start
   http://${SERVER_HOST}:56789/     JavaMonitor — add apps and instances here
   tail -f via: ssh ${SERVER} 'tail -f /opt/webobjects/log/modulo.log'
-
-Firewall: expose 80/443 to the world (80 is required for ACME);
-keep 1085 (wotaskd) and 56789 (JavaMonitor) restricted.
 
 Adding an app: deploy its .woa, add it in JavaMonitor, then drop
 /rebbi/<domain>/conf/site.toml with its hostnames and POST /reload —
