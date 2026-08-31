@@ -33,6 +33,13 @@ public class TestModulo {
 		assertEquals( new Modulo.RequestTarget( "TestApp", null ), Modulo.targetFromURI( HttpURI.build( "/Apps/WebObjects/TestApp.woa" ), host -> null, host -> false ) );
 	}
 
+	@Test
+	final void extensionlessApplicationName() {
+		assertEquals( new Modulo.RequestTarget( "TestApp", null ), Modulo.targetFromURI( HttpURI.build( "/Apps/WebObjects/TestApp" ), host -> null, host -> false ) );
+		assertEquals( new Modulo.RequestTarget( "TestApp", null ), Modulo.targetFromURI( HttpURI.build( "/Apps/WebObjects/TestApp/" ), host -> null, host -> false ) );
+		assertEquals( new Modulo.RequestTarget( "TestApp", null ), Modulo.targetFromURI( HttpURI.build( "/Apps/WebObjects/TestApp/bla/bla" ), host -> null, host -> false ) );
+	}
+
 	/** A configured-but-appless site is an operational signal; an unknown host is spam noise. */
 	@Test
 	final void unknownHostVersusConfiguredSiteWithoutApp() {

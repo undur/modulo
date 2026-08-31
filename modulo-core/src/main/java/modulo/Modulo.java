@@ -987,7 +987,15 @@ public class Modulo {
 
 		final int periodIndex = appName.indexOf( ".woa" );
 
+		// Extensionless URLs (/<prefix>/AppName or /<prefix>/AppName/...) —
+		// the app name is everything up to the first slash
 		if( periodIndex == -1 ) {
+			final int slashIndex = appName.indexOf( '/' );
+
+			if( slashIndex != -1 ) {
+				appName = appName.substring( 0, slashIndex );
+			}
+
 			return new RequestTarget( appName, null );
 		}
 
