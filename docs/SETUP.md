@@ -360,6 +360,23 @@ typically live within seconds.
    curl -s -o /dev/null -w '%{http_code} ssl:%{ssl_verify_result}\n' https://www.newsite.com/
    ```
 
+### Deploying a new build of an app
+
+Pack the bundle and POST it to JavaMonitor's `admin/deploy`; it hands
+the archive to wotaskd on every host the app runs on, which swaps the
+bundle into place (the previous one is kept beside it as
+`x<App>_<timestamp>.woa`) and restarts the instances:
+
+```sh
+tar -czf MyApp.tar.gz -C target MyApp.woa
+curl -X POST --data-binary @MyApp.tar.gz \
+  "http://myserver.example:56789/Apps/WebObjects/JavaMonitor.woa/admin/deploy?type=app&name=MyApp&pw=<stack password>"
+```
+
+The response reports what happened on each host. This is a full bounce
+of every instance; if that's not acceptable for an app, stop and start
+it yourself around the swap with `admin/stop` and `admin/start`.
+
 ### Removing a site
 
 Delete its site entry (or fragment file) and `POST /reload`.
