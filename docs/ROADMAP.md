@@ -26,6 +26,15 @@ is the chronology.
 
 ## Sites config, remaining slots
 
+- **Static upstream sites** — `upstream = "localhost:8080"` on a site
+  instead of `app`: proxy a hostname to a fixed address, no wotaskd
+  involved. TLS/ACME/redirects/logs/WebSockets apply unchanged; code
+  needed is the config field, a bypass of adaptor-config resolution,
+  and honest admin-UI display. Small and high-leverage: it's the
+  static instance source of DEPLOYMENT-MODELS.md rule 1 in minimal
+  form (the Docker DNS source later extends this seam), it's the
+  first real exercise of "modulo never requires wotaskd", and it lets
+  betterbuild's Jenkins run behind modulo instead of Caddy.
 - **Wildcard hosts and certificates** (`"*.example.com"`). Routing is
   the easy half: wildcard entries matched after exact ones. Certs are
   the decision — wildcards require DNS-01 (needs a DNS-provider API),
@@ -70,13 +79,10 @@ is the chronology.
 - **Release archives**: downloadable prebuilt bundles, collapsing
   setup-server.sh's clone-and-build section to download-and-unpack —
   and removing the hidden dependency on the author's Maven settings.
-- **setup-server.sh options**: let the user pick the JDK distribution
-  and version (Adoptium/Temurin a suitable default — apt-updated or
-  API-fetched — instead of hardcoded Oracle 26, a non-LTS whose
-  updates end 2026-09); let the user set the wotaskd/JavaMonitor
-  password at install (means the script writing an initial
-  SiteConfig.xml with the password field, and mirroring it into
-  modulo.toml's [wotaskd] table).
+- **Deploy hardening**: stream `admin/deploy` uploads to disk instead
+  of buffering in memory (today: 512m heaps and a mandatory
+  `application/octet-stream` content type); graceful and rolling
+  bounce variants; pruning of moved-aside `x<App>_…woa` backups.
 
 ## Larger arcs
 
@@ -133,6 +139,8 @@ One line each; details in git history and SETUP.md.
 - **WebSocket proxying** — raw tunnel after handshake, routed like HTTP, verified through wss:// *(iteration 6, 2026-08-30)*
 - **Operational skeleton** — standard layout on both servers, setup-server.sh (standalone full-stack installer), unified deploy scripts *(2026-08-30)*
 - **Performance validated** — 5× Apache+mod_WebObjects throughput at equal latency on a modern-platform A-B-A lab; report in performance-test-results-2026-08-30.md *(2026-08-30)*
+- **setup-server.sh options** — JDK distribution/version as parameters (openjdk default, latest resolved live), stack password written into SiteConfig at install *(2026-08-31)*
+- **Deploy through the stack** — `admin/deploy` on JavaMonitor fans a .tar.gz out to each host's wotaskd, which swaps the bundle and bounces instances; replaces the rsync post_build scripts *(2026-08-31, in wonder-slim-deployment)*
 
 ---
 
