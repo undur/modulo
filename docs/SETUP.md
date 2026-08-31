@@ -369,11 +369,13 @@ bundle into place (the previous one is kept beside it as
 
 ```sh
 tar -czf MyApp.tar.gz -C target MyApp.woa
-curl -X POST --data-binary @MyApp.tar.gz \
+curl -X POST -H 'Content-Type: application/octet-stream' --data-binary @MyApp.tar.gz \
   "http://myserver.example:56789/Apps/WebObjects/JavaMonitor.woa/admin/deploy?type=app&name=MyApp&pw=<stack password>"
 ```
 
-The response reports what happened on each host. This is a full bounce
+The `Content-Type` header is required — without it curl declares the
+body form-encoded and JavaMonitor tries to parse the archive as form
+fields. The response reports what happened on each host. This is a full bounce
 of every instance; if that's not acceptable for an app, stop and start
 it yourself around the swap with `admin/stop` and `admin/start`.
 

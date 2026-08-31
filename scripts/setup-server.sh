@@ -210,7 +210,7 @@ Description=wotaskd
 After=network.target
 [Service]
 User=webobjects
-ExecStart=/opt/webobjects/apps/wotaskd.woa/wotaskd -WOPort 1085 -WOHost ${SERVER_HOST} -DWODeploymentConfigurationDirectory=/opt/webobjects/conf -Xms32m -Xmx256m >> /opt/webobjects/log/wotaskd.log 2>&1
+ExecStart=/opt/webobjects/apps/wotaskd.woa/wotaskd -WOPort 1085 -WOHost ${SERVER_HOST} -DWODeploymentConfigurationDirectory=/opt/webobjects/conf -Xms32m -Xmx512m >> /opt/webobjects/log/wotaskd.log 2>&1
 Restart=on-failure
 RestartSec=5
 [Install]
@@ -223,7 +223,7 @@ Description=javamonitor
 After=wotaskd.service
 [Service]
 User=webobjects
-ExecStart=/opt/webobjects/apps/JavaMonitor.woa/JavaMonitor -WOPort 56789 -WOHost ${SERVER_HOST} -DWODeploymentConfigurationDirectory=/opt/webobjects/conf -Xms32m -Xmx256m >> /opt/webobjects/log/javamonitor.log 2>&1
+ExecStart=/opt/webobjects/apps/JavaMonitor.woa/JavaMonitor -WOPort 56789 -WOHost ${SERVER_HOST} -DWODeploymentConfigurationDirectory=/opt/webobjects/conf -Xms32m -Xmx512m >> /opt/webobjects/log/javamonitor.log 2>&1
 Restart=on-failure
 RestartSec=5
 [Install]
