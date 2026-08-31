@@ -12,27 +12,27 @@
 # script doubles as the setup guide — read it top to bottom; it is the
 # same process docs/SETUP.md describes.
 #
-# Usage: ./setup-server.sh <server-hostname> <acme-email>
+# Usage: ./setup-server.sh <server-hostname> <acme-email> [jdk-dist] [jdk-version]
+#
+#   jdk-dist     openjdk (default — Oracle's free build; "oracle" is an alias) or temurin
+#   jdk-version  a major version number, or "latest" (the default)
 #
 # Options (environment variables):
-#   JDK_DIST=openjdk|temurin  JDK distribution (default openjdk — Oracle's free build; "oracle" is an alias)
-#   JDK_VERSION=latest|<N>    JDK major version (default: latest GA release)
 #   STACK_PASSWORD=...        wotaskd/JavaMonitor password (default: generated)
 #   MODULO_SETUP_DIR=...      where sources + build cache live (default ~/.modulo-setup)
 set -euo pipefail
 
-SERVER_HOST="${1:?usage: setup-server.sh <server-hostname> <acme-email>}"
-ACME_EMAIL="${2:?usage: setup-server.sh <server-hostname> <acme-email>}"
+SERVER_HOST="${1:?usage: setup-server.sh <server-hostname> <acme-email> [jdk-dist] [jdk-version]}"
+ACME_EMAIL="${2:?usage: setup-server.sh <server-hostname> <acme-email> [jdk-dist] [jdk-version]}"
 SERVER="root@${SERVER_HOST}"
 
 WORKDIR="${MODULO_SETUP_DIR:-${HOME}/.modulo-setup}"
-JDK_DIST="${JDK_DIST:-openjdk}"
+JDK_DIST="${3:-${JDK_DIST:-openjdk}}"
 [ "${JDK_DIST}" = "oracle" ] && JDK_DIST="openjdk"
-JDK_VERSION="${JDK_VERSION:-latest}"
+JDK_VERSION="${4:-${JDK_VERSION:-latest}}"
 
-# "latest" resolves to the newest GA major via the Adoptium release index
-# Both distributions track the same release train, so the current major
-# version comes from Adoptium's release index either way.
+# "latest" resolves to the newest GA major — both distributions track the
+# same release train, so Adoptium's release index answers for either.
 if [ "${JDK_VERSION}" = "latest" ]; then
   JDK_VERSION="$(curl -fsSL 'https://api.adoptium.net/v3/info/available_releases' | grep -o '"most_recent_feature_release": *[0-9]*' | grep -o '[0-9]*$')"
   echo "JDK: ${JDK_DIST} ${JDK_VERSION} (latest GA)"
