@@ -13,14 +13,48 @@
 # same process docs/SETUP.md describes.
 #
 # Usage: ./setup-server.sh <server-hostname> <acme-email>
+#
+# Options (environment variables):
+#   JDK_DIST=temurin|oracle   JDK distribution (default temurin — standard OpenJDK; "openjdk" is an alias)
+#   JDK_VERSION=latest|<N>    JDK major version (default: latest GA release)
+#   STACK_PASSWORD=...        wotaskd/JavaMonitor password (default: generated)
+#   MODULO_SETUP_DIR=...      where sources + build cache live (default ~/.modulo-setup)
 set -euo pipefail
 
 SERVER_HOST="${1:?usage: setup-server.sh <server-hostname> <acme-email>}"
 ACME_EMAIL="${2:?usage: setup-server.sh <server-hostname> <acme-email>}"
 SERVER="root@${SERVER_HOST}"
 
-WORKDIR="${MODULO_SETUP_DIR:-${HOME}/.modulo-setup}"    # sources + build cache live here between runs
-JVM="/opt/jdk-26/bin/java"                              # installed on the server if missing (section 2)
+WORKDIR="${MODULO_SETUP_DIR:-${HOME}/.modulo-setup}"
+JDK_DIST="${JDK_DIST:-temurin}"
+[ "${JDK_DIST}" = "openjdk" ] && JDK_DIST="temurin"
+JDK_VERSION="${JDK_VERSION:-latest}"
+
+# "latest" resolves to the newest GA major via the Adoptium release index
+# (Oracle's download URLs need an explicit number — pass JDK_VERSION).
+if [ "${JDK_VERSION}" = "latest" ]; then
+  [ "${JDK_DIST}" = "oracle" ] && { echo "JDK_DIST=oracle needs an explicit JDK_VERSION" >&2; exit 1; }
+  JDK_VERSION="$(curl -fsSL 'https://api.adoptium.net/v3/info/available_releases' | grep -o '"most_recent_feature_release": *[0-9]*' | grep -o '[0-9]*$')"
+  echo "JDK: temurin ${JDK_VERSION} (latest GA)"
+fi
+JVM="/opt/jdk-${JDK_VERSION}/bin/java"                  # installed on the server if missing (section 2)
+
+# The stack password guards wotaskd's config channel and the JavaMonitor
+# UI. It is stored and transmitted as the classic WO salted-MD5 hash —
+# only you and the closing banner ever see the plaintext.
+STACK_PASSWORD="${STACK_PASSWORD:-$(openssl rand -base64 12 | tr -d '/+=')}"
+STACK_HASH="$(python3 - "$STACK_PASSWORD" << 'HASHEOF'
+import hashlib, secrets, sys
+salt = "".join(secrets.choice("0123456789ABCDEF") for _ in range(4))
+digest = hashlib.md5(b"X#@!" + sys.argv[1].encode() + salt.encode()).digest()
+out = salt
+for byte in digest:
+    b = byte - 256 if byte > 127 else byte
+    mashed = 127 - b if b < 0 else b
+    out += "0123456789ABCDEF"[mashed // 16] + "0123456789ABCDEF"[mashed % 16]
+print(out)
+HASHEOF
+)"
 
 ### 1 — Fetch the sources and build the three bundles ####################
 # This whole section disappears the day prebuilt release archives exist —
@@ -54,15 +88,21 @@ STACK_REPO="${WORKDIR}/wonder-slim-deployment"
 # The stack owns /opt/webobjects. Apps you deploy later conventionally
 # get per-app homes elsewhere (we use /rebbi/<domain>/{wo,conf,log}) —
 # the include pattern in modulo.toml below picks their site files up.
-# A missing JVM is installed (Oracle JDK 26, matching the arch).
+# A missing JVM is installed, matching the arch and your chosen
+# distribution/version (JDK_DIST/JDK_VERSION above).
 
 ssh "${SERVER}" "
   set -e
   if ! test -x ${JVM}; then
     case \$(uname -m) in x86_64) ARCH=x64;; aarch64) ARCH=aarch64;; *) echo 'unsupported arch' >&2; exit 1;; esac
-    echo \"Installing Oracle JDK 26 (\${ARCH})...\"
-    curl -fsSL \"https://download.oracle.com/java/26/latest/jdk-26_linux-\${ARCH}_bin.tar.gz\" -o /tmp/jdk.tgz
-    mkdir -p /opt/jdk-26 && tar -xzf /tmp/jdk.tgz -C /opt/jdk-26 --strip-components=1 && rm /tmp/jdk.tgz
+    echo \"Installing ${JDK_DIST} JDK ${JDK_VERSION} (\${ARCH})...\"
+    case '${JDK_DIST}' in
+      temurin) URL=\"https://api.adoptium.net/v3/binary/latest/${JDK_VERSION}/ga/linux/\${ARCH}/jdk/hotspot/normal/eclipse\";;
+      oracle)  URL=\"https://download.oracle.com/java/${JDK_VERSION}/latest/jdk-${JDK_VERSION}_linux-\${ARCH}_bin.tar.gz\";;
+      *) echo 'JDK_DIST must be temurin or oracle' >&2; exit 1;;
+    esac
+    curl -fsSL \"\${URL}\" -o /tmp/jdk.tgz
+    mkdir -p /opt/jdk-${JDK_VERSION} && tar -xzf /tmp/jdk.tgz -C /opt/jdk-${JDK_VERSION} --strip-components=1 && rm /tmp/jdk.tgz
   fi
   test -x ${JVM} || { echo 'ERROR: JVM install failed' >&2; exit 1; }
   id webobjects >/dev/null 2>&1 || useradd --system --create-home webobjects
@@ -70,6 +110,12 @@ ssh "${SERVER}" "
 "
 
 ### 3 — Upload the bundles ###############################################
+# Existing bundles are moved aside first, so re-running the script is a
+# stack upgrade rather than an error.
+
+ssh "${SERVER}" 'for APP in wotaskd JavaMonitor modulo-runner; do
+  if [ -d "/opt/webobjects/apps/${APP}.woa" ]; then mv "/opt/webobjects/apps/${APP}.woa" "/opt/webobjects/apps/x-${APP}.woa-prev-$(date +%Y%m%d-%H%M%S)"; fi
+done'
 
 scp -q -r "${STACK_REPO}/wotaskd/target/wotaskd.woa"           "${SERVER}:/opt/webobjects/apps/"
 scp -q -r "${STACK_REPO}/JavaMonitor/target/JavaMonitor.woa"   "${SERVER}:/opt/webobjects/apps/"
@@ -83,6 +129,14 @@ scp -q -r "${MODULO_REPO}/modulo-runner/target/modulo-runner.woa" "${SERVER}:/op
 
 ADMIN_PASSWORD="$(openssl rand -base64 15 | tr -d '/+=')"
 
+# Both config files are written only when absent — a re-run never
+# clobbers a configured server. (If you re-run with a NEW stack
+# password on an old server, update SiteConfig.xml and modulo.toml's
+# [wotaskd] password yourself, or delete them first.)
+if ssh "${SERVER}" "test -e /opt/webobjects/modulo.toml"; then
+  echo "modulo.toml exists — keeping it (admin password unchanged)"
+  ADMIN_PASSWORD="(unchanged — see the server's modulo.toml)"
+else
 ssh "${SERVER}" "cat > /opt/webobjects/modulo.toml" << EOF
 # modulo root config. [frontend]/[admin]/[wotaskd] apply at startup;
 # sites/acme hot-reload via: curl -X POST -u :password https://host/reload
@@ -100,7 +154,7 @@ password = "${ADMIN_PASSWORD}"
 [wotaskd]
 host     = "${SERVER_HOST}"
 port     = 1085
-password = "none"        # fresh wotaskd has no password; if you set one in JavaMonitor, mirror it here
+password = "${STACK_HASH}"   # the stack password's hash — wotaskd's config channel expects the hashed form
 
 [acme]
 email   = "${ACME_EMAIL}"
@@ -111,6 +165,31 @@ storage = "/opt/webobjects/acme"
 hostnames = [ "${SERVER_HOST}" ]
 app = "Modulo"           # modulo's own admin pages, served through itself
 EOF
+fi
+
+# An initial SiteConfig.xml carrying the stack password (hashed) — this
+# is wotaskd's config store, and the same password guards JavaMonitor's
+# UI (log in there with the PLAINTEXT from the closing banner).
+if ssh "${SERVER}" "test -e /opt/webobjects/conf/SiteConfig.xml"; then
+  echo "SiteConfig.xml exists — keeping it (stack password unchanged)"
+  STACK_PASSWORD="(unchanged — the existing SiteConfig's password applies)"
+else
+ssh "${SERVER}" "cat > /opt/webobjects/conf/SiteConfig.xml" << EOF
+<SiteConfig type="NSDictionary">
+	<applicationArray type="NSArray">
+	</applicationArray>
+	<hostArray type="NSArray">
+	</hostArray>
+	<instanceArray type="NSArray">
+	</instanceArray>
+	<site type="NSDictionary">
+		<password type="NSString">${STACK_HASH}</password>
+		<viewRefreshEnabled type="NSString">YES</viewRefreshEnabled>
+		<viewRefreshRate type="NSNumber">60</viewRefreshRate>
+	</site>
+</SiteConfig>
+EOF
+fi
 
 ### 5 — systemd units ####################################################
 # JavaMonitor runs as its own service, NOT as a wotaskd-managed app —
@@ -168,7 +247,8 @@ ssh "${SERVER}" '
   printf "/opt/webobjects/log/*.log {\n\tdaily\n\trotate 14\n\tcompress\n\tdelaycompress\n\tmissingok\n\tnotifempty\n\tcopytruncate\n}\n" > /etc/logrotate.d/modulo
   chown -R webobjects:webobjects /opt/webobjects
   systemctl daemon-reload
-  systemctl enable --now wotaskd javamonitor modulo
+  systemctl enable wotaskd javamonitor modulo
+  systemctl restart wotaskd javamonitor modulo
 '
 
 ### 7 — Firewall: expose only ssh, 80 and 443 ###########################
@@ -211,6 +291,7 @@ Stack is up on ${SERVER_HOST}:
   https://${SERVER_HOST}/          modulo admin (any username, password: ${ADMIN_PASSWORD})
                                    — real certificate arrives seconds after first start
   http://${SERVER_HOST}:56789/     JavaMonitor — add apps and instances here
+                                   (password: ${STACK_PASSWORD} — also guards wotaskd's config channel)
   tail -f via: ssh ${SERVER} 'tail -f /opt/webobjects/log/modulo.log'
 
 Adding an app: deploy its .woa, add it in JavaMonitor, then drop
