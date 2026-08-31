@@ -15,7 +15,7 @@
 # Usage: ./setup-server.sh <server-hostname> <acme-email>
 #
 # Options (environment variables):
-#   JDK_DIST=temurin|oracle   JDK distribution (default temurin — standard OpenJDK; "openjdk" is an alias)
+#   JDK_DIST=openjdk|temurin  JDK distribution (default openjdk — Oracle's free build; "oracle" is an alias)
 #   JDK_VERSION=latest|<N>    JDK major version (default: latest GA release)
 #   STACK_PASSWORD=...        wotaskd/JavaMonitor password (default: generated)
 #   MODULO_SETUP_DIR=...      where sources + build cache live (default ~/.modulo-setup)
@@ -26,16 +26,16 @@ ACME_EMAIL="${2:?usage: setup-server.sh <server-hostname> <acme-email>}"
 SERVER="root@${SERVER_HOST}"
 
 WORKDIR="${MODULO_SETUP_DIR:-${HOME}/.modulo-setup}"
-JDK_DIST="${JDK_DIST:-temurin}"
-[ "${JDK_DIST}" = "openjdk" ] && JDK_DIST="temurin"
+JDK_DIST="${JDK_DIST:-openjdk}"
+[ "${JDK_DIST}" = "oracle" ] && JDK_DIST="openjdk"
 JDK_VERSION="${JDK_VERSION:-latest}"
 
 # "latest" resolves to the newest GA major via the Adoptium release index
-# (Oracle's download URLs need an explicit number — pass JDK_VERSION).
+# Both distributions track the same release train, so the current major
+# version comes from Adoptium's release index either way.
 if [ "${JDK_VERSION}" = "latest" ]; then
-  [ "${JDK_DIST}" = "oracle" ] && { echo "JDK_DIST=oracle needs an explicit JDK_VERSION" >&2; exit 1; }
   JDK_VERSION="$(curl -fsSL 'https://api.adoptium.net/v3/info/available_releases' | grep -o '"most_recent_feature_release": *[0-9]*' | grep -o '[0-9]*$')"
-  echo "JDK: temurin ${JDK_VERSION} (latest GA)"
+  echo "JDK: ${JDK_DIST} ${JDK_VERSION} (latest GA)"
 fi
 JVM="/opt/jdk-${JDK_VERSION}/bin/java"                  # installed on the server if missing (section 2)
 
@@ -97,9 +97,9 @@ ssh "${SERVER}" "
     case \$(uname -m) in x86_64) ARCH=x64;; aarch64) ARCH=aarch64;; *) echo 'unsupported arch' >&2; exit 1;; esac
     echo \"Installing ${JDK_DIST} JDK ${JDK_VERSION} (\${ARCH})...\"
     case '${JDK_DIST}' in
+      openjdk) URL=\"https://download.oracle.com/java/${JDK_VERSION}/latest/jdk-${JDK_VERSION}_linux-\${ARCH}_bin.tar.gz\";;
       temurin) URL=\"https://api.adoptium.net/v3/binary/latest/${JDK_VERSION}/ga/linux/\${ARCH}/jdk/hotspot/normal/eclipse\";;
-      oracle)  URL=\"https://download.oracle.com/java/${JDK_VERSION}/latest/jdk-${JDK_VERSION}_linux-\${ARCH}_bin.tar.gz\";;
-      *) echo 'JDK_DIST must be temurin or oracle' >&2; exit 1;;
+      *) echo 'JDK_DIST must be openjdk or temurin' >&2; exit 1;;
     esac
     curl -fsSL \"\${URL}\" -o /tmp/jdk.tgz
     mkdir -p /opt/jdk-${JDK_VERSION} && tar -xzf /tmp/jdk.tgz -C /opt/jdk-${JDK_VERSION} --strip-components=1 && rm /tmp/jdk.tgz
