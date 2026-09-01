@@ -120,7 +120,7 @@ public class SitesConfigReader {
 
 	record Acme( String email, String directory, String storage ) {}
 
-	record SiteEntry( List<String> hostnames, String app, Tls tls, Boolean canonicalRedirect, Boolean httpsRedirect, List<RewriteEntry> rewrites ) {}
+	record SiteEntry( List<String> hostnames, String app, Tls tls, Boolean canonicalRedirect, Boolean httpsRedirect, List<RewriteEntry> rewrites, String woa ) {}
 
 	record Tls( String mode, String cert, String key ) {}
 
@@ -329,7 +329,16 @@ public class SitesConfigReader {
 				entry.canonicalRedirect() == null || entry.canonicalRedirect(),
 				entry.httpsRedirect() == null || entry.httpsRedirect() );
 
-		return new ConfiguredSite( site, entry.app(), acmeManaged, toRewriteRules( entry.rewrites(), context ) );
+		// WOA compat: `woa` points at the app's .woa bundle (or split-install
+		// dir) on modulo's own disk, enabling classic WebServerResources
+		// serving — see modulo.WebServerResourcesHandler. Existence isn't
+		// validated here: the path may legitimately appear before the bundle
+		// does (the handler answers 404 until then).
+		if( entry.woa() != null && entry.woa().isBlank() ) {
+			throw new SitesConfigException( "%s has a blank \"woa\" — either point it at the app's .woa bundle or omit it".formatted( context ) );
+		}
+
+		return new ConfiguredSite( site, entry.app(), acmeManaged, toRewriteRules( entry.rewrites(), context ), entry.woa() );
 	}
 
 	private static List<RewriteRule> toRewriteRules( final List<RewriteEntry> entries, final String siteContext ) {

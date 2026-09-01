@@ -136,6 +136,17 @@ public class Modulo {
 	private SitesConfig _sitesConfig;
 
 	/**
+	 * WOA compat: hostname → the site's .woa bundle path, for sites that
+	 * declare one. Feeds {@link WebServerResourcesHandler}; empty otherwise.
+	 */
+	private Map<String, java.nio.file.Path> _hostToWoa = Map.of();
+
+	/** WOA compat: live lookup for {@link WebServerResourcesHandler} — reads the field each call, so site reloads apply */
+	private java.nio.file.Path woaForHost( final String host ) {
+		return _hostToWoa.get( host );
+	}
+
+	/**
 	 * How error conditions are answered. Defaults to modulo's error page for
 	 * every condition; the embedding application may reassign individual
 	 * conditions via {@link #errorHandling()}.
@@ -317,7 +328,8 @@ public class Modulo {
 		connector.setPort( _port );
 		server.addConnector( connector );
 		_proxy = new ModuloProxy( rewriteURIFunction(), _errorHandling, _events, _refusalObserver, _requestStats );
-		server.setHandler( new WebSocketTunnelHandler( _proxy, rewriteURIFunction(), _errorHandling ) );
+		// WOA compat (self-contained, easy to remove — see WebServerResourcesHandler)
+		server.setHandler( new WebServerResourcesHandler( this::woaForHost, new WebSocketTunnelHandler( _proxy, rewriteURIFunction(), _errorHandling ) ) );
 		server.setErrorHandler( new ModuloProxy.ModuloErrorHandler( _errorHandling ) );
 
 		server.start();
@@ -333,6 +345,7 @@ public class Modulo {
 		_sitesConfig = sitesConfig;
 		_domainToAppMap = sitesConfig.domainToAppMap();
 		_hostToRewrites = sitesConfig.hostToRewrites();
+		_hostToWoa = sitesConfig.hostToWoa();
 		final List<Site> sites = sitesConfig.frontendSites();
 		logger.info( "Front-end configured with {} site(s) from {}", sites.size(), config.sitesFile() );
 
@@ -377,7 +390,9 @@ public class Modulo {
 				_h3FleetStore,
 				fleetSite == null ? null : Set.copyOf( fleetSite.allHostnames() ),
 				config.accessLogDir(),
-				new WebSocketTunnelHandler( _proxy = new ModuloProxy( rewriteURIFunction(), _errorHandling, _events, _refusalObserver, _requestStats ), rewriteURIFunction(), _errorHandling ),
+				// WOA compat (self-contained, easy to remove — see WebServerResourcesHandler)
+				new WebServerResourcesHandler( this::woaForHost,
+						new WebSocketTunnelHandler( _proxy = new ModuloProxy( rewriteURIFunction(), _errorHandling, _events, _refusalObserver, _requestStats ), rewriteURIFunction(), _errorHandling ) ),
 				new ModuloProxy.ModuloErrorHandler( _errorHandling ) );
 		_frontend.start();
 
@@ -467,6 +482,7 @@ public class Modulo {
 		_sitesConfig = newConfig;
 		_domainToAppMap = newConfig.domainToAppMap();
 		_hostToRewrites = newConfig.hostToRewrites();
+		_hostToWoa = newConfig.hostToWoa();
 
 		logUnmappedDomains( sites );
 		_acmeManager.checkNow();

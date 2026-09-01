@@ -121,7 +121,7 @@ is the chronology.
   instances = 1
   ```
 - **WebServerResources serving** — opt-in per site:
-  `webserverResources = "<path to .woa or split-install dir>"` and
+  `woa = "<path to .woa or split-install dir>"` and
   modulo owns that site's `/WebObjects/<App>.woa/…` URL space, mapped
   onto exactly two whitelisted subtrees — `WebServerResources/` and
   `Frameworks/*/WebServerResources/` — never `Resources/` (the

@@ -241,6 +241,7 @@ warning; matches load in sorted path order.
 | `canonicalRedirect` | no (`true`) | 301 alias hostnames → canonical hostname. |
 | `httpsRedirect` | no (`true`) | 301 plain HTTP → HTTPS. |
 | `rewrites` | no | Ordered URL rewrite rules — see below. |
+| `woa` | no | Path to the app's `.woa` bundle (or split-install dir) on modulo's disk. Enables classic WebServerResources serving: modulo answers `/WebObjects/<App>.woa/…` for the bundle's `WebServerResources/` and `Frameworks/*/WebServerResources/` subtrees — never `Resources/`. For plain WO/Wonder apps that expect the web server to serve their resources; apps using Wonder's `ERXResourceRequestHandler` don't need it. |
 
 ### Rewrite rules
 
