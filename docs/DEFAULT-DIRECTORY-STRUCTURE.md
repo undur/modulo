@@ -7,6 +7,7 @@
 * Possibly use folders for all log files. Multiple rotated log files generate a lot of noise
 * Archive folders for backup copies of apps (bundles archived when a new app is deployed). Applies to both deployed apps and the stack apps.
 * Alternative considered, parked: give the stack's own apps the *same per-app structure* as deployed apps — a folder per stack app holding its bundle and log files, exactly like an `apps/` entry. Deepens the hierarchy on disk, but it's a mental simplification: one structure to know, wherever an app lives.
+* The name of `sites/` — open question. The doubt: it's a folder containing only configuration files, and you can't deduce that from the name; "sites" suggests the sites themselves live there. The counter-argument: in this design they *do* — a site owns no files, it *is* its routing entry, so the config file is the site, and `ls sites/` honestly answers "what does this server serve" (mirroring `apps/` = "what's deployed"). Candidates weighed: `siteconfig` is unavailable (already taken by wotaskd's unrelated `SiteConfig.xml` store — a twin name would be cruel); `modulo.d` is accurate in the conf.d tradition but names the consumer, not the content; `sites.d` is the best rename if the fragment-ness should be signaled, at the cost of breaking the layout's voice (no other directory is named for its mechanism). Staying `sites/` for now; both instincts recorded.
 
 
 ## Suggested default directory layout
