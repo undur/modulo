@@ -79,7 +79,13 @@ is the chronology.
   resolution (default ← [settings] ← per-site).
 - **Statistics / profiling**: per-app/site request counters, status
   distributions, recent-window rates; long-term prefer plugging into
-  JFR streams over inventing protocols.
+  JFR streams over inventing protocols. Include site-activity
+  visibility on the overview — requests today / last request per
+  configured site, and access-log directories matching no configured
+  site flagged as orphans (a hostname merge leaves one behind).
+  Note: "last write" alone can't separate live from dead — scanner
+  noise keeps every resolvable name's log warm until the request
+  filtering ships.
 - **Metrics endpoint**: health/readiness probes, cert-expiry and
   renewal-failure surfaces for automation (the admin pages cover the
   human case).
