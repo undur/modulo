@@ -43,6 +43,12 @@ JVM="/opt/jdk-${JDK_VERSION}/bin/java"                  # installed on the serve
 # UI. It is stored and transmitted as the classic WO salted-MD5 hash —
 # only you and the closing banner ever see the plaintext.
 STACK_PASSWORD="${STACK_PASSWORD:-$(openssl rand -base64 12 | tr -d '/+=')}"
+
+# First contact: a fresh server's host key isn't in known_hosts yet, and
+# the plain ssh calls below would each stop at the verification prompt.
+# accept-new records the key on this one call (and only for a host we
+# haven't seen before — a *changed* key still fails loudly).
+ssh -o StrictHostKeyChecking=accept-new "${SERVER}" true
 STACK_HASH="$(python3 - "$STACK_PASSWORD" << 'HASHEOF'
 import hashlib, secrets, sys
 salt = "".join(secrets.choice("0123456789ABCDEF") for _ in range(4))
