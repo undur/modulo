@@ -119,6 +119,18 @@ ssh "${SERVER}" "
 ssh "${SERVER}" "
   id webobjects >/dev/null 2>&1 || useradd --system --create-home webobjects
   mkdir -p /opt/webobjects/apps /opt/webobjects/conf /opt/webobjects/log/access /opt/webobjects/acme
+
+  # Debian maps the machine's hostname to 127.0.1.1 in /etc/hosts. A WO
+  # app's lifebeat thread identifies itself via that lookup, so its
+  # lifebeats report 127.0.1.1 and never match the host wotaskd knows —
+  # instances run fine but register as dead and get no traffic. Map the
+  # hostname to the machine's real address instead (and stop cloud-init
+  # from putting it back on reboot).
+  ADDR=\$(hostname -I | awk '{print \$1}')
+  if grep -q '^127\.0\.1\.1' /etc/hosts; then
+    sed -i \"s/^127\.0\.1\.1.*/\${ADDR} \$(hostname) ${SERVER_HOST}/\" /etc/hosts
+    [ -d /etc/cloud/cloud.cfg.d ] && echo 'manage_etc_hosts: false' > /etc/cloud/cloud.cfg.d/99-keep-etc-hosts.cfg
+  fi
 "
 
 ### 4 — Upload the bundles ###############################################
