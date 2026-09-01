@@ -120,6 +120,20 @@ is the chronology.
   path = "/opt/apps/MyApp.woa"
   instances = 1
   ```
+- **WebServerResources serving** — opt-in per site:
+  `webserverResources = "<path to .woa or split-install dir>"` and
+  modulo owns that site's `/WebObjects/<App>.woa/…` URL space, mapped
+  onto exactly two whitelisted subtrees — `WebServerResources/` and
+  `Frameworks/*/WebServerResources/` — never `Resources/` (the
+  boundary the classic split install enforced physically, kept here by
+  path rule). GET/HEAD only, normalized, symlinks re-checked,
+  ETag/Last-Modified. The adoption feature for plain WO/Wonder apps
+  (deployment WO has no resource request handler — only Wonder's
+  ERXResourceRequestHandler apps can self-serve), and the last thing
+  Apache was still needed for. Live motivating case: SW on linode-4
+  has 404'd all its framework resources since the Apache cutover.
+  Narrows the "no filesystem serving" non-goal by one word: no
+  docroots, no listings — a bundle-scoped resource map.
 - **Classic mod_WebObjects compatibility bundle** — instance numbers
   injected into adaptor URLs, the legacy header vocabulary — purely an
   adoption feature for unmodified classic apps; verify against a real
