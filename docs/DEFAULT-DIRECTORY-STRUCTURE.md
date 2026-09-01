@@ -6,6 +6,7 @@
 * Same for app-specific _modulo_ config (although app-level proxy configuration should really only be performed by and obtained from wotaskd. That might change, though)
 * Possibly use folders for all log files. Multiple rotated log files generate a lot of noise
 * Archive folders for backup copies of apps (bundles archived when a new app is deployed). Applies to both deployed apps and the stack apps.
+* Alternative considered, parked: give the stack's own apps the *same per-app structure* as deployed apps — a folder per stack app holding its bundle and log files, exactly like an `apps/` entry. Deepens the hierarchy on disk, but it's a mental simplification: one structure to know, wherever an app lives.
 
 
 ## Suggested default directory layout
@@ -19,7 +20,7 @@ First draft for the default server layout, used by the server setup script
       │
       ├── modulo.toml                        modulo's basic config
       │
-      ├── stack/                             the stack's own apps
+      ├── stackapps/                         the stack's own apps — "stack" in the name to keep their role distinct from apps/
       │   ├── wotaskd.woa                    
       │   ├── JavaMonitor.woa                
       │   ├── modulo.woa              
@@ -29,7 +30,7 @@ First draft for the default server layout, used by the server setup script
       │   ├── SiteConfig.xml                 
       │   └── SiteConfigBackup.xml.<timestamp>.<action>.gz
       │
-      ├── log/                               the stack's logging, one log pr. service
+      ├── stacklogs/                         the stack's logging, one log per service
       │   ├── modulo.log                     
       │   ├── wotaskd.log
       │   ├── javamonitor.log                
