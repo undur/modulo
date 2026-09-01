@@ -64,7 +64,9 @@ First draft for the default server layout, used by the server setup script
       │       ├── app/   Blog.woa
       │       └── log/   ...
       │       
-      └── sites/                             site-specific modulo configuration files (host default apps, hostname aliases, canonical hostname, URL rewrites etc.). 
+      └── sites/                             site-specific modulo configuration files (host default apps, hostname aliases, canonical hostname, URL rewrites etc.).
+          │                                  Filenames are convention only — naming a file after its canonical hostname keeps `ls sites/` meaningful, but identity
+          │                                  comes from each [[sites]] entry's hostnames array (first = canonical), and one file may hold several [[sites]].
           ├── www.example.com.toml           → Website, with /blog/* routed to Blog     (one site, several apps)
           ├── shop.example.com.toml          → Shop
           ├── shop.example.org.toml          → Shop                                     (one app, several sites)
