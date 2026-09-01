@@ -39,7 +39,8 @@ First draft for the default server layout, used by the server setup script
       │   ├── wotaskd.log
       │   └── javamonitor.log                
       │
-      ├── access-logs/                       per-site access logs — written, rotated and pruned by the front end (accessLogDir in modulo.toml).
+      ├── access-logs/                       per-site access logs — written and rotated daily by the front end (accessLogDir in modulo.toml); kept
+      │   │                                  indefinitely by default — retention becomes a global + per-site setting with the logging-configuration work.
       │   │                                  Top-level, like acme/: daemon-owned per-site state, not a flavor of stack log — different
       │   │                                  owner (modulo, not logrotate), different readers, own retention.
       │   ├── www.example.com/               a directory per site, a file per day

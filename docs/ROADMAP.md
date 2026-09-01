@@ -71,6 +71,12 @@ is the chronology.
   balancing strategies beyond round-robin (least-outstanding-requests
   from modulo's own observations beats WO's session-count
   `loadaverage`).
+- **Logging configuration, as a whole.** Access log retention became
+  keep-forever by default (2026-09-01) — deleting a user's logs is the
+  user's decision. The eventual surface, designed once: retention as a
+  global default with per-site override, log format, and logging
+  endpoints beyond files. Belongs with the tuning-surface scoped
+  resolution (default ← [settings] ← per-site).
 - **Statistics / profiling**: per-app/site request counters, status
   distributions, recent-window rates; long-term prefer plugging into
   JFR streams over inventing protocols.
