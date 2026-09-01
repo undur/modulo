@@ -37,8 +37,11 @@ First draft for the default server layout, used by the server setup script
       │   ├── wotaskd.log
       │   ├── javamonitor.log                
       │   └── access/                        per-site access logs — written, rotated and pruned by the front end
-      │       ├── www.example.com.2026_08_31.log
-      │       ├── shop.example.com.2026_08_31.log
+      │       ├── www.example.com/           a directory per site, a file per day
+      │       │   ├── 2026_08_31.log
+      │       │   └── 2026_09_01.log
+      │       ├── shop.example.com/
+      │       │   └── …
       │       └── …
       │       
       ├── acme/                              certificates — deliberately global: one certificate can cover several sites

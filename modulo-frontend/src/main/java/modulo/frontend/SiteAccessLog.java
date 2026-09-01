@@ -26,10 +26,11 @@ import org.slf4j.LoggerFactory;
 import modulo.frontend.site.Site;
 
 /**
- * Per-site access logging: one log file per Site (keyed by canonical
- * hostname — alias traffic folds into the canonical file), daily rollover
- * with bounded retention, in combined log format with a leading virtual-host
- * field plus request duration:
+ * Per-site access logging: one directory per Site (keyed by canonical
+ * hostname — alias traffic folds into the canonical site's directory) with
+ * one file per day inside it, daily rollover with bounded retention, in
+ * combined log format with a leading virtual-host field plus request
+ * duration:
  *
  * <pre>
  * www.example.com 1.2.3.4 - - [29/Aug/2026:11:22:33 +0000] "GET / HTTP/2" 200 5310 "-" "Mozilla/..." 12ms
@@ -104,8 +105,13 @@ public class SiteAccessLog implements RequestLog {
 
 	private PrintWriter openWriter( final String fileKey ) {
 		try {
-			// yyyy_mm_dd in the pattern makes RolloverFileOutputStream roll daily and prune beyond retainDays
-			final String pattern = directory.resolve( fileKey + ".yyyy_mm_dd.log" ).toString();
+			// A directory per site, a file per day inside it — tens of sites
+			// times months of retention in one flat folder was unbrowsable.
+			// yyyy_mm_dd in the pattern makes RolloverFileOutputStream roll
+			// daily and prune beyond retainDays, per directory.
+			final Path siteDirectory = directory.resolve( fileKey );
+			Files.createDirectories( siteDirectory );
+			final String pattern = siteDirectory.resolve( "yyyy_mm_dd.log" ).toString();
 			return new PrintWriter( new OutputStreamWriter( new RolloverFileOutputStream( pattern, true, retainDays ), StandardCharsets.UTF_8 ) );
 		}
 		catch( final IOException e ) {
