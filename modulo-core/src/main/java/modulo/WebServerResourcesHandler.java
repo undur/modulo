@@ -106,14 +106,14 @@ public class WebServerResourcesHandler extends Handler.Wrapper {
 		final String method = request.getMethod();
 
 		if( !"GET".equals( method ) && !"HEAD".equals( method ) ) {
-			Response.writeError( request, response, callback, HttpStatus.METHOD_NOT_ALLOWED_405 );
+			answer( response, callback, HttpStatus.METHOD_NOT_ALLOWED_405 );
 			return true;
 		}
 
 		final Path file = resolveResource( woa, afterPrefix.substring( woa.getFileName().toString().length() + 1 ) );
 
 		if( file == null ) {
-			Response.writeError( request, response, callback, HttpStatus.NOT_FOUND_404 );
+			answer( response, callback, HttpStatus.NOT_FOUND_404 );
 			return true;
 		}
 
@@ -147,6 +147,18 @@ public class WebServerResourcesHandler extends Handler.Wrapper {
 		// The connection layer suppresses the body for HEAD on its own.
 		response.write( true, ByteBuffer.wrap( Files.readAllBytes( file ) ), callback );
 		return true;
+	}
+
+	/**
+	 * A plain minimal answer, written directly — deliberately NOT
+	 * Response.writeError, which routes through modulo's typed error handler
+	 * (built for proxy conditions; it renders these as 400s). Keeping the
+	 * feature's responses inside the feature also keeps it self-contained.
+	 */
+	private static void answer( final Response response, final Callback callback, final int status ) {
+		response.setStatus( status );
+		response.getHeaders().put( HttpHeader.CONTENT_TYPE, "text/plain" );
+		response.write( true, ByteBuffer.wrap( HttpStatus.getMessage( status ).getBytes( java.nio.charset.StandardCharsets.US_ASCII ) ), callback );
 	}
 
 	/**
