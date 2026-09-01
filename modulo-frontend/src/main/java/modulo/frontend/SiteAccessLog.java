@@ -108,7 +108,8 @@ public class SiteAccessLog implements RequestLog {
 			// A directory per site, a file per day inside it — tens of sites
 			// times months of retention in one flat folder was unbrowsable.
 			// yyyy_mm_dd in the pattern makes RolloverFileOutputStream roll
-			// daily and prune beyond retainDays, per directory.
+			// daily and, when retainDays > 0, prune per directory (0 = keep
+			// forever — the default; see JettyFrontend.ACCESS_LOG_RETAIN_DAYS).
 			final Path siteDirectory = directory.resolve( fileKey );
 			Files.createDirectories( siteDirectory );
 			final String pattern = siteDirectory.resolve( "yyyy_mm_dd.log" ).toString();

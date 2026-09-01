@@ -70,8 +70,14 @@ public class JettyFrontend {
 	private final ErrorHandler errorHandler;
 	private final Path accessLogDir;
 
-	/** Days of per-site access logs to retain. FIXME: Make configurable when the logging config surface grows // 2026-08-29 */
-	public static final int ACCESS_LOG_RETAIN_DAYS = 90;
+	/**
+	 * Days of per-site access logs to retain — 0 = keep forever, which is the
+	 * default on principle: deleting a user's access logs is the user's
+	 * decision, not ours. Becomes a real setting (global default + per-site
+	 * override) with the logging-configuration work on the roadmap, alongside
+	 * format and non-file logging endpoints.
+	 */
+	public static final int ACCESS_LOG_RETAIN_DAYS = 0;
 
 	/** Max worker threads for the front-end server. FIXME: Make configurable // 2026-08-29 */
 	public static final int MAX_THREADS = 200;
