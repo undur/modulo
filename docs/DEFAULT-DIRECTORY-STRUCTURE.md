@@ -51,17 +51,17 @@ First draft for the default server layout, used by the server setup script
       │       
       ├── apps/                              one directory per application — keyed by app name, holds only app-owned files
       │   ├── Website/
-      │   │   ├── wo/
+      │   │   ├── app/
       │   │   │   ├── Website.woa            the deployed bundle
       │   │   │   └── x-Website.woa-prev-…/  previous builds
       │   │   └── log/                       instance logs
       │   │       ├── Website-1.log          
       │   │       └── Website-2.log          
       │   ├── Shop/
-      │   │   ├── wo/    Shop.woa
+      │   │   ├── app/   Shop.woa
       │   │   └── log/   ...
       │   └── Blog/
-      │       ├── wo/    Blog.woa
+      │       ├── app/   Blog.woa
       │       └── log/   ...
       │       
       └── sites/                             site-specific modulo configuration files (host default apps, hostname aliases, canonical hostname, URL rewrites etc.). 
