@@ -120,20 +120,6 @@ is the chronology.
   path = "/opt/apps/MyApp.woa"
   instances = 1
   ```
-- **WebServerResources serving** — opt-in per site:
-  `woa = "<path to .woa or split-install dir>"` and
-  modulo owns that site's `/WebObjects/<App>.woa/…` URL space, mapped
-  onto exactly two whitelisted subtrees — `WebServerResources/` and
-  `Frameworks/*/WebServerResources/` — never `Resources/` (the
-  boundary the classic split install enforced physically, kept here by
-  path rule). GET/HEAD only, normalized, symlinks re-checked,
-  ETag/Last-Modified. The adoption feature for plain WO/Wonder apps
-  (deployment WO has no resource request handler — only Wonder's
-  ERXResourceRequestHandler apps can self-serve), and the last thing
-  Apache was still needed for. Live motivating case: SW on linode-4
-  has 404'd all its framework resources since the Apache cutover.
-  Narrows the "no filesystem serving" non-goal by one word: no
-  docroots, no listings — a bundle-scoped resource map.
 - **Classic mod_WebObjects compatibility bundle** — instance numbers
   injected into adaptor URLs, the legacy header vocabulary — purely an
   adoption feature for unmodified classic apps; verify against a real
@@ -159,6 +145,7 @@ One line each; details in git history and SETUP.md.
 - **Operational skeleton** — standard layout on both servers, setup-server.sh (standalone full-stack installer), unified deploy scripts *(2026-08-30)*
 - **Performance validated** — 5× Apache+mod_WebObjects throughput at equal latency on a modern-platform A-B-A lab; report in performance-test-results-2026-08-30.md *(2026-08-30)*
 - **setup-server.sh options** — JDK distribution/version as parameters (openjdk default, latest resolved live), stack password written into SiteConfig at install *(2026-08-31)*
+- **WebServerResources serving** — `woa` on a site maps `/WebObjects/<App>.woa/…` onto the bundle's two WebServerResources subtrees, never `Resources/`; the plain-WO adoption feature, proven on SW *(2026-09-01)*
 - **Deploy through the stack** — `admin/deploy` on JavaMonitor fans a .tar.gz out to each host's wotaskd, which swaps the bundle and bounces instances; replaces the rsync post_build scripts *(2026-08-31, in wonder-slim-deployment)*
 
 ---
