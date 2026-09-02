@@ -88,7 +88,9 @@ is the chronology.
   filtering ships.
 - **Metrics endpoint**: health/readiness probes, cert-expiry and
   renewal-failure surfaces for automation (the admin pages cover the
-  human case).
+  human case). Include *access log unwritable* as a surfaced condition
+  (admin events + a startup writability check of `accessLogDir`) — a
+  per-request WARN nobody reads is silence.
 - **Pipeline unification** — collapse `startPlain`/`startWithFrontend`
   into one pipeline with multiple connectors. (Issue: #6)
 - **Migrate WO apps to `X-Forwarded-Host`** so modulo can stop
