@@ -115,6 +115,46 @@ checks). For WO apps mostly the app's concern; probably out of
 modulo's scope, but worth knowing the pattern (nginx `auth_request`,
 Traefik middleware).
 
+### Controlled partial rollouts
+
+The far end of the deployment spectrum, from a survey of how WO shops
+actually deploy: the simplest case is one instance — stop, swap, start
+(what `admin/deploy` does today). The most complex is many instances
+across several hosts, a new build deployed to *a few* of them, A/B
+observation of new against old, and then a hand-controlled slow
+rollout — or a retreat. Everything in between depends on what the
+change is. Hard to get right; the kind of thing that makes a stack
+feel grown-up if it works.
+
+What it would take, and how much already exists:
+
+- **Versioned bundles on disk.** Old and new must coexist. The deploy
+  already keeps moved-aside builds (`x<App>_<stamp>.woa`, pruned to a
+  retained count); the missing half is installing a build *without*
+  making it the live one — `<App>.woa` becomes a pointer, or instances
+  point at versioned directories directly.
+- **Per-instance bundle paths.** SiteConfig already carries a path per
+  instance, so "instances 1–2 run the new build, 3–8 the old" needs no
+  model change — only a deploy that sets paths selectively and bounces
+  selectively.
+- **Cohort routing in modulo.** Session stickiness already pins
+  returning users to their instance, which is most of what A/B needs.
+  On top: a per-app weight (new builds get n% of *new* sessions) and a
+  way to pin a cohort deliberately (a cookie, a header, a user list)
+  so the people testing see the new build on purpose.
+- **Observing new against old.** The request stats and per-instance
+  status modulo already keeps, split by build — error rates and
+  latency per version side by side is the whole point.
+- **The hand on the dial.** JavaMonitor, or the deploy client: promote
+  (widen the cohort, then flip the pointer and bounce the rest) or
+  retreat (point everything back; the old build never went away).
+
+Prerequisite arcs: the graceful/rolling bounce variants in the roadmap
+are the single-host, single-version version of the same machinery, and
+the container model (`DEPLOYMENT-MODELS.md`) maps onto it directly —
+two image versions behind one service is the same idea with the
+filesystem replaced by a registry.
+
 ### Friendlier TOML footgun error
 
 When strict parsing finds a known root key (`include`) inside a table
