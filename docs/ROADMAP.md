@@ -96,10 +96,10 @@ is the chronology.
 - **Release archives**: downloadable prebuilt bundles, collapsing
   setup-server.sh's clone-and-build section to download-and-unpack —
   and removing the hidden dependency on the author's Maven settings.
-- **Deploy hardening**: stream `admin/deploy` uploads to disk instead
-  of buffering in memory (today: 512m heaps and a mandatory
-  `application/octet-stream` content type); graceful and rolling
-  bounce variants; pruning of moved-aside `x<App>_…woa` backups.
+- **Deploy hardening**: graceful and rolling bounce variants; pruning
+  of moved-aside `x<App>_…woa` backups; the deploy password as a header
+  instead of a query parameter (it lands in the front end's access log
+  today).
 
 ## Larger arcs
 
@@ -159,6 +159,7 @@ One line each; details in git history and SETUP.md.
 - **setup-server.sh options** — JDK distribution/version as parameters (openjdk default, latest resolved live), stack password written into SiteConfig at install *(2026-08-31)*
 - **WebServerResources serving** — `woa` on a site maps `/WebObjects/<App>.woa/…` onto the bundle's two WebServerResources subtrees, never `Resources/`; the plain-WO adoption feature, proven on SW *(2026-09-01)*
 - **Deploy through the stack** — `admin/deploy` on JavaMonitor fans a .tar.gz out to each host's wotaskd, which swaps the bundle and bounces instances; replaces the rsync post_build scripts *(2026-08-31, in wonder-slim-deployment)*
+- **Streaming deploys** — `admin/deploy` and `wa/deploy` read the archive off the wire (JavaMonitor spools to a temp file, wotaskd straight into staging); constant memory at every hop, under either adaptor. The gotcha, for the record: WO's `contentInputStream()` refuses the stream once any form value was read, and `WOContext`'s constructor reads one for the session id — Wonder's `registerStreamingRequestHandlerKey` plus the handler's `setAllowsContentInputStream` keep the window open *(2026-09-02, in wonder-slim-deployment)*
 
 ---
 
