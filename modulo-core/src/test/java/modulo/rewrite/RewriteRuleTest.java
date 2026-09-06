@@ -55,10 +55,33 @@ public class RewriteRuleTest {
 		assertEquals( new Rewritten( "/Apps/WebObjects/ASI.woa/wa/RouteAction/handler", "url=/members/list&page=2" ), qsa.apply( "/members/list", "page=2" ) );
 	}
 
+	// Patterns see the path as sent — percent-encoded — so every input below is
+	// what a real request carries, never a decoded form.
+
 	@Test
-	public void encodeCapturesUrlEncodesSubstitutedValues() {
-		final RewriteRule b = new RewriteRule( Pattern.compile( "^/s/(.*)$" ), "/Apps/WebObjects/Strimillinn.woa/wa/search?s=$1", Redirect.NONE, false, true );
-		assertEquals( new Rewritten( "/Apps/WebObjects/Strimillinn.woa/wa/search", "s=kaffi+%26+te" ), b.apply( "/s/kaffi & te", null ) );
+	public void encodeCapturesReEncodesAnEncodedCaptureAsAQueryValue() {
+		final RewriteRule b = new RewriteRule( Pattern.compile( "^/s/(.*)$" ), "/Apps/WebObjects/App.woa/wa/search?s=$1", Redirect.NONE, false, true );
+		// An encoded space and ampersand come out form-encoded — not double-encoded
+		assertEquals( new Rewritten( "/Apps/WebObjects/App.woa/wa/search", "s=kaffi+%26+te" ), b.apply( "/s/kaffi%20%26%20te", null ) );
+		// Non-ASCII survives untouched: no %25 anywhere
+		assertEquals( new Rewritten( "/Apps/WebObjects/App.woa/wa/search", "s=S%C3%A6la" ), b.apply( "/s/S%C3%A6la", null ) );
+		// A raw ampersand in the segment can't break the query, a raw plus stays a plus
+		assertEquals( new Rewritten( "/Apps/WebObjects/App.woa/wa/search", "s=kaffi%26te" ), b.apply( "/s/kaffi&te", null ) );
+		assertEquals( new Rewritten( "/Apps/WebObjects/App.woa/wa/search", "s=C%2B%2B" ), b.apply( "/s/C++", null ) );
+	}
+
+	@Test
+	public void withoutEncodeCapturesTheRawSegmentPassesThrough() {
+		final RewriteRule b = new RewriteRule( Pattern.compile( "^/s/(.*)$" ), "/Apps/WebObjects/App.woa/wa/search?s=$1", Redirect.NONE, false, false );
+		assertEquals( new Rewritten( "/Apps/WebObjects/App.woa/wa/search", "s=kaffi%20%26%20te" ), b.apply( "/s/kaffi%20%26%20te", null ) );
+	}
+
+	@Test
+	public void pathCapturesStayEncodedInAPathTarget() {
+		final RewriteRule b = new RewriteRule( Pattern.compile( "^/things/(.*)$" ), "/Apps/WebObjects/App.woa/wa/thing/$1", Redirect.NONE, false, false );
+		assertEquals( new Rewritten( "/Apps/WebObjects/App.woa/wa/thing/a%20b", null ), b.apply( "/things/a%20b", null ) );
+		// An encoded '?' in a segment is path text, never a query separator
+		assertEquals( new Rewritten( "/Apps/WebObjects/App.woa/wa/thing/x%3Fevil=1", null ), b.apply( "/things/x%3Fevil=1", null ) );
 	}
 
 	@Test

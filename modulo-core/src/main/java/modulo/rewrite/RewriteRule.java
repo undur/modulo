@@ -7,6 +7,8 @@ import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.eclipse.jetty.util.URIUtil;
+
 /**
  * One per-site URL rewrite rule: a regex matched against the request path and
  * a substitution target with {@code $1}–{@code $9} capture references —
@@ -27,8 +29,19 @@ import java.util.regex.Pattern;
  * Query string semantics mirror Apache: a target without a query part keeps
  * the request's original query; a target with its own query replaces it,
  * unless {@code appendQuery} (Apache's {@code [QSA]}) merges the original in
- * after the rule's. {@code encodeCaptures} (Apache's {@code [B]}) URL-encodes
- * each substituted capture — for captures that become query parameter values.
+ * after the rule's.
+ *
+ * Patterns match the request path <em>as sent</em> — percent-encoded, the
+ * bytes the app would receive. A rule that wants to match {@code æ} literally
+ * writes {@code %C3%A6}, and the hex case is the regex's business. (Apache
+ * matched the decoded path; matching the encoded one keeps a path segment from
+ * ever smuggling a {@code ?} or {@code /} into the substituted target.) Hence
+ * a capture is encoded text, which is right for a path target as it stands.
+ * {@code encodeCaptures} (Apache's {@code [B]}) is for captures that become
+ * query parameter <em>values</em>: the capture is decoded as a path segment
+ * and re-encoded as a form value, so {@code S%C3%A6la} stays {@code S%C3%A6la},
+ * a literal {@code &} becomes {@code %26}, and a literal {@code +} becomes
+ * {@code %2B} rather than a space.
  */
 public record RewriteRule( Pattern pattern, String target, Redirect redirect, boolean appendQuery, boolean encodeCaptures ) {
 
@@ -120,7 +133,7 @@ public record RewriteRule( Pattern pattern, String target, Redirect redirect, bo
 				if( next >= '1' && next <= '9' ) {
 					final String value = matcher.group( next - '0' );
 					if( value != null ) {
-						out.append( encodeCaptures ? URLEncoder.encode( value, StandardCharsets.UTF_8 ) : value );
+						out.append( encodeCaptures ? asQueryValue( value ) : value );
 					}
 					i++;
 					continue;
@@ -136,6 +149,17 @@ public record RewriteRule( Pattern pattern, String target, Redirect redirect, bo
 		}
 
 		return out.toString();
+	}
+
+	/**
+	 * @return An encoded path capture re-encoded as a query parameter value:
+	 *         decoded as a path segment first (so {@code %26} and a raw
+	 *         {@code &} both mean the character, and {@code +} stays a plus),
+	 *         then form-encoded. Encoding the encoded text directly would
+	 *         turn every {@code %} into {@code %25}.
+	 */
+	private static String asQueryValue( final String encodedCapture ) {
+		return URLEncoder.encode( URIUtil.decodePath( encodedCapture ), StandardCharsets.UTF_8 );
 	}
 
 	/**
