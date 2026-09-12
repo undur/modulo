@@ -73,7 +73,7 @@ public class MDConfigPage extends NGComponent {
 		rows.add( new SettingRow( "Proxy", "Worker threads, max (plain)", String.valueOf( Modulo.PLAIN_PROXY_MAX_THREADS ), "hardcoded", "not yet" ) );
 		if( proxyClient != null ) {
 			rows.add( new SettingRow( "Proxy", "Upstream connect timeout", MDStartPage.humanDuration( Duration.ofMillis( proxyClient.getConnectTimeout() ) ), "Jetty default", "not yet" ) );
-			rows.add( new SettingRow( "Proxy", "Upstream idle timeout", proxyClient.getIdleTimeout() <= 0 ? "unlimited" : MDStartPage.humanDuration( Duration.ofMillis( proxyClient.getIdleTimeout() ) ), "Jetty default", "not yet" ) );
+			rows.add( new SettingRow( "Proxy", "Upstream idle timeout", proxyClient.getIdleTimeout() <= 0 ? "unlimited" : MDStartPage.humanDuration( Duration.ofMillis( proxyClient.getIdleTimeout() ) ), "Jetty default; per instance from wotaskd's adaptor config when JavaMonitor sets recvTimeout (or sendTimeout)", "per instance via JavaMonitor; not yet in modulo.toml" ) );
 			rows.add( new SettingRow( "Proxy", "Upstream connections per destination, max", String.valueOf( proxyClient.getMaxConnectionsPerDestination() ), "Jetty default", "not yet" ) );
 			rows.add( new SettingRow( "Proxy", "Upstream request queue per destination, max", String.valueOf( proxyClient.getMaxRequestsQueuedPerDestination() ), "Jetty default", "not yet" ) );
 			rows.add( new SettingRow( "Proxy", "Proxy request buffer size", proxyClient.getRequestBufferSize() + " bytes", "Jetty default", "not yet" ) );

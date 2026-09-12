@@ -11,17 +11,15 @@ is the chronology.
 
 ## Up next
 
-- **Upstream timeouts, adaptor-config-driven.** Honor the per-instance
-  `sendTimeout`/`recvTimeout`/`cnctTimeout` attributes wotaskd already
-  publishes (JavaMonitor's timeout settings), falling back to Jetty's
-  defaults (currently 5s connect / 30s idle, not configurable).
-  Long-running apps (file processing, uploads) need this; the config
-  channel and the operator UI for it already exist.
 - **Request filtering and rate limiting.** Deny rules for scanner
   paths (reusing the rewrite machinery), a per-client token bucket
   answering 429, and accept-time auto-tempban — design sketch in
   BRAINSTORMING.md, prompted by the 2026-08-31 scan (6.2k requests
   in 6 minutes from one IP against www.rebbi.is).
+- **Upstream timeouts in modulo.toml.** JavaMonitor's per-instance
+  timeouts are honored from the adaptor config (see Done); the
+  proxy-level defaults (5s connect / 30s idle) still aren't
+  configurable. Belongs to the tuning surface below.
 - **The tuning surface.** The config page inventories every knob the
   server runs with, most marked "configurable: not yet". Work down the
   list into the root config with scoped resolution: hardcoded default
@@ -161,6 +159,7 @@ One line each; details in git history and SETUP.md.
 - **setup-server.sh options** — JDK distribution/version as parameters (openjdk default, latest resolved live), stack password written into SiteConfig at install *(2026-08-31)*
 - **WebServerResources serving** — `woa` on a site maps `/WebObjects/<App>.woa/…` onto the bundle's two WebServerResources subtrees, never `Resources/`; the plain-WO adoption feature, proven on SW *(2026-09-01)*
 - **Deploy through the stack** — `admin/deploy` on JavaMonitor fans a .tar.gz out to each host's wotaskd, which swaps the bundle and bounces instances; replaces the rsync post_build scripts *(2026-08-31, in wonder-slim-deployment)*
+- **Adaptor-config timeouts honored** — an instance's `recvTimeout` (else `sendTimeout`), as JavaMonitor sets it and wotaskd publishes it, becomes the upstream idle timeout for requests routed to it, per request so it follows failover; Jetty's default where none is published. `cnctTimeout` deliberately not applied: connecting to a live instance is instant, so it would only delay failover from a dead one *(2026-09-12)*
 - **Streaming deploys** — `admin/deploy` and `wa/deploy` read the archive off the wire (JavaMonitor spools to a temp file, wotaskd straight into staging); constant memory at every hop, under either adaptor. The gotcha, for the record: WO's `contentInputStream()` refuses the stream once any form value was read, and `WOContext`'s constructor reads one for the session id — Wonder's `registerStreamingRequestHandlerKey` plus the handler's `setAllowsContentInputStream` keep the window open *(2026-09-02, in wonder-slim-deployment)*
 
 ---

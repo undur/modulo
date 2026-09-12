@@ -98,7 +98,13 @@ public class AdaptorConfigParser {
 						final Node refuseNode = attributes.getNamedItem( "refuseNewSessions" );
 						final boolean refuseNewSessions = refuseNode != null && "YES".equalsIgnoreCase( refuseNode.getNodeValue() );
 
-						final Instance instance = new Instance( Integer.valueOf( id ), host, Integer.valueOf( port ), refuseNewSessions );
+						// JavaMonitor's timeout settings, published only when set
+						// (resolved instance → app → site on wotaskd's side)
+						final Integer sendTimeout = secondsAttribute( attributes, "sendTimeout" );
+						final Integer recvTimeout = secondsAttribute( attributes, "recvTimeout" );
+						final Integer cnctTimeout = secondsAttribute( attributes, "cnctTimeout" );
+
+						final Instance instance = new Instance( Integer.valueOf( id ), host, Integer.valueOf( port ), refuseNewSessions, sendTimeout, recvTimeout, cnctTimeout );
 						application.instances().add( instance );
 					}
 				}
@@ -106,6 +112,27 @@ public class AdaptorConfigParser {
 		}
 
 		return config;
+	}
+
+	/**
+	 * @return The attribute as whole seconds, or null when absent or not a
+	 *         positive number (a malformed value is treated as unset rather
+	 *         than failing the whole config)
+	 */
+	private static Integer secondsAttribute( final NamedNodeMap attributes, final String name ) {
+		final Node node = attributes.getNamedItem( name );
+
+		if( node == null ) {
+			return null;
+		}
+
+		try {
+			final int seconds = Integer.parseInt( node.getNodeValue().trim() );
+			return seconds > 0 ? seconds : null;
+		}
+		catch( final NumberFormatException e ) {
+			return null;
+		}
 	}
 
 	/**

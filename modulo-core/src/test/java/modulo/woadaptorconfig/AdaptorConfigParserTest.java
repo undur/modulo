@@ -53,6 +53,34 @@ class AdaptorConfigParserTest {
 	}
 
 	@Test
+	void timeoutAttributesAreParsedWhenPublished() throws Exception {
+		// The shape wotaskd publishes when JavaMonitor has timeouts set (app-level, resolved per instance)
+		final String xml = """
+				<?xml version="1.0" encoding="ASCII"?>
+				<adaptor>
+				  <application name="Strimillinn" urlVersion="4">
+				    <instance id="2" port="2010" host="h" sendTimeout="60" recvTimeout="90" cnctTimeout="5"/>
+				  </application>
+				  <application name="Other">
+				    <instance id="1" port="2001" host="h"/>
+				    <instance id="2" port="2002" host="h" recvTimeout="abc" sendTimeout="0"/>
+				  </application>
+				</adaptor>
+				""";
+		final AdaptorConfig config = parse( xml );
+		final modulo.woadaptorconfig.model.Instance strimillinn = config.applications().get( "Strimillinn" ).instances().get( 0 );
+		assertEquals( 60, strimillinn.sendTimeout() );
+		assertEquals( 90, strimillinn.recvTimeout() );
+		assertEquals( 5, strimillinn.cnctTimeout() );
+		// Absent → null; malformed or non-positive → null, never a failed parse
+		final modulo.woadaptorconfig.model.Instance plain = config.applications().get( "Other" ).instances().get( 0 );
+		assertEquals( null, plain.recvTimeout() );
+		final modulo.woadaptorconfig.model.Instance odd = config.applications().get( "Other" ).instances().get( 1 );
+		assertEquals( null, odd.recvTimeout() );
+		assertEquals( null, odd.sendTimeout() );
+	}
+
+	@Test
 	void refuseNewSessionsAttributeIsParsed() throws Exception {
 		final AdaptorConfig config = parse( """
 				<adaptor>

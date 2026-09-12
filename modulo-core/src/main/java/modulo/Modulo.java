@@ -904,6 +904,15 @@ public class Modulo {
 			// and track attempted instances for potential failover retries
 			request.setAttribute( ModuloProxy.TARGET_APP_ATTRIBUTE, application.name() );
 			request.setAttribute( ModuloProxy.TARGET_INSTANCE_ATTRIBUTE, targetInstance.id() );
+
+			final java.time.Duration idleTimeout = ModuloProxy.upstreamIdleTimeout( targetInstance );
+
+			if( idleTimeout != null ) {
+				request.setAttribute( ModuloProxy.UPSTREAM_IDLE_TIMEOUT_ATTRIBUTE, idleTimeout );
+			}
+			else {
+				request.removeAttribute( ModuloProxy.UPSTREAM_IDLE_TIMEOUT_ATTRIBUTE ); // a failover retry may land on an instance without one
+			}
 			if( attempted == null ) {
 				final Set<Integer> newAttempted = java.util.concurrent.ConcurrentHashMap.newKeySet();
 				newAttempted.add( targetInstance.id() );

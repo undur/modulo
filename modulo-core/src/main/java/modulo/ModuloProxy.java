@@ -1,8 +1,10 @@
 package modulo;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 
@@ -45,6 +47,13 @@ class ModuloProxy extends ProxyHandler.Reverse {
 
 	/** Request attribute: the Set&lt;Integer&gt; of instance ids already attempted for this request — non-null marks a failover retry in progress. */
 	static final String ATTEMPTED_INSTANCES_ATTRIBUTE = "modulo.attempted-instances";
+
+	/**
+	 * Request attribute: the idle timeout (a {@link Duration}) for the
+	 * upstream request, from the routed instance's adaptor-config timeouts.
+	 * Absent when wotaskd publishes none — Jetty's client default applies.
+	 */
+	static final String UPSTREAM_IDLE_TIMEOUT_ATTRIBUTE = "modulo.upstream-idle-timeout";
 
 	/**
 	 * The response header a WO instance uses to announce it is refusing new
@@ -140,6 +149,20 @@ class ModuloProxy extends ProxyHandler.Reverse {
 		}
 	}
 
+	/**
+	 * The upstream idle timeout an instance's adaptor-config timeouts call
+	 * for: recvTimeout — the time the adaptor waits for the response, which
+	 * is what a slow request needs — else sendTimeout; null when neither is
+	 * published, leaving Jetty's client default. cnctTimeout is deliberately
+	 * not honored: connecting to a live instance takes milliseconds, so a
+	 * connect timeout only ever fires against a dead one, where a long
+	 * value would just delay failover.
+	 */
+	static Duration upstreamIdleTimeout( final modulo.woadaptorconfig.model.Instance instance ) {
+		final Integer seconds = instance.recvTimeout() != null ? instance.recvTimeout() : instance.sendTimeout();
+		return seconds == null ? null : Duration.ofSeconds( seconds );
+	}
+
 	private static Throwable rootCause( final Throwable throwable ) {
 		Throwable cause = throwable;
 		while( cause.getCause() != null && cause.getCause() != cause ) {
@@ -157,6 +180,12 @@ class ModuloProxy extends ProxyHandler.Reverse {
 		// A failover retry overwrites it — the stats measure the attempt that
 		// actually succeeded.
 		clientToProxyRequest.setAttribute( UPSTREAM_BEGIN_NANOS_ATTRIBUTE, System.nanoTime() );
+
+		// JavaMonitor's timeout for this instance, when it has one: applied
+		// per request, so it follows the instance across failover retries
+		if( clientToProxyRequest.getAttribute( UPSTREAM_IDLE_TIMEOUT_ATTRIBUTE ) instanceof Duration idleTimeout ) {
+			proxyToServerRequest.idleTimeout( idleTimeout.toMillis(), TimeUnit.MILLISECONDS );
+		}
 
 		// Watch upstream responses for the refusing-new-sessions announcements
 		// (both dialects), attributing them to the instance the rewriter
