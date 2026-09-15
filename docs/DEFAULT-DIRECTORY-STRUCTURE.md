@@ -16,7 +16,7 @@ First draft for the default server layout, used by the server setup script
 
 ```
 /opt/
-  ├── jdk-26/                                JDK
+  ├── jdk-27/                                JDK (one or more jdk-<version>/; bundles pin the newest at deploy time)
   │
   └── wo/                                    the stack — owned by the `wo` user
       │

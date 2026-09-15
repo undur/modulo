@@ -61,7 +61,7 @@ the server's JVM path into the launcher:
 ```sh
 ( cd modulo-frontend && mvn clean install )
 ( cd modulo-core && mvn clean install )
-( cd modulo-runner && mvn clean package -Dlaunch.jvm=/opt/jdk-26/bin/java )
+( cd modulo-runner && mvn clean package -Dlaunch.jvm=/opt/jdk-27/bin/java )   # the JDK installed on the target; scripts/deploy.sh picks the newest /opt/jdk-* there
 ```
 
 This produces `modulo-runner/target/modulo-runner.woa`.
