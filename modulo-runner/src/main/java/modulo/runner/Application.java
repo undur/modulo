@@ -16,8 +16,9 @@ import modulo.Modulo;
 import modulo.frontend.FrontendConfig;
 import ng.appserver.NGActionResults;
 import ng.appserver.NGApplication;
-import ng.appserver.NGRequest;
-import ng.appserver.NGResponse;
+import ng.appserver.http.NGRequest;
+import ng.appserver.http.NGResponse;
+import ng.appserver.http.NGResponses;
 import ng.plugins.Routes;
 
 public class Application extends NGApplication {
@@ -114,7 +115,7 @@ public class Application extends NGApplication {
 			logger.info( "Config file {} not present — running without front-end", file );
 			return p;
 		}
-		try( InputStream in = Files.newInputStream( file ) ) {
+		try( InputStream in = Files.newInputStream( file )) {
 			p.load( in );
 			logger.info( "Loaded {} entries from {}", p.size(), file );
 		}
@@ -182,7 +183,7 @@ public class Application extends NGApplication {
 	public Routes routes() {
 		return Routes
 				.create()
-				.map( "/WOAdaptorInfo", request -> new NGResponse( _modulo.adaptorConfig().toString(), 200 ) )
+				.map( "/WOAdaptorInfo", request -> NGResponses.of( 200, _modulo.adaptorConfig().toString() ) )
 				.map( "/overview", MDOverviewPage.class )
 				.map( "/applications", MDApplicationsPage.class )
 				.map( "/events", MDEventsPage.class )
@@ -201,7 +202,7 @@ public class Application extends NGApplication {
 	private NGActionResults statsJson( final NGRequest request ) {
 		final modulo.stats.RequestStats.Snapshot snapshot = _modulo.requestStats().snapshot();
 		final String json = tools.jackson.databind.json.JsonMapper.builder().build().writeValueAsString( snapshot );
-		final NGResponse response = new NGResponse( json, 200 );
+		final NGResponse response = NGResponses.of( 200, json );
 		response.setHeader( "content-type", "application/json" );
 		return response;
 	}
@@ -214,13 +215,13 @@ public class Application extends NGApplication {
 	 */
 	private NGActionResults clearEventsAction( final NGRequest request ) {
 		if( !"POST".equalsIgnoreCase( request.method() ) ) {
-			return new NGResponse( "Use POST to clear\n", 405 );
+			return NGResponses.of( 405, "Use POST to clear\n" );
 		}
 
 		_modulo.events().clear();
 		_modulo.events().add( modulo.frontend.events.Event.Severity.INFO, "events-cleared", null, null, "Event log cleared by operator" );
 
-		final NGResponse response = new NGResponse( "", 302 );
+		final NGResponse response = NGResponses.of( 302, "" );
 		response.setHeader( "Location", "/events" );
 		return response;
 	}
@@ -235,14 +236,14 @@ public class Application extends NGApplication {
 	 */
 	private NGActionResults reloadAction( final NGRequest request ) {
 		if( !"POST".equalsIgnoreCase( request.method() ) ) {
-			return new NGResponse( "Use POST to reload\n", 405 );
+			return NGResponses.of( 405, "Use POST to reload\n" );
 		}
 
 		try {
-			return new NGResponse( _modulo.reloadSitesConfig() + "\n", 200 );
+			return NGResponses.of( 200, _modulo.reloadSitesConfig() + "\n" );
 		}
 		catch( final Exception e ) {
-			return new NGResponse( "Reload failed — the previous configuration is untouched and still serving:\n\n%s\n".formatted( e.getMessage() ), 422 );
+			return NGResponses.of( 422, "Reload failed — the previous configuration is untouched and still serving:\n\n%s\n".formatted( e.getMessage() ) );
 		}
 	}
 
@@ -273,13 +274,13 @@ public class Application extends NGApplication {
 
 		if( password != null && !password.isBlank() ) {
 			if( !basicAuthPasswordMatches( request, password ) ) {
-				final NGResponse response = new NGResponse( "Authentication required", 401 );
+				final NGResponse response = NGResponses.of( 401, "Authentication required" );
 				response.setHeader( "WWW-Authenticate", "Basic realm=\"modulo\"" );
 				return response;
 			}
 		}
 		else if( !isDevelopmentMode() ) {
-			return new NGResponse( "Admin endpoints are disabled. Set modulo.admin-password in %s to enable them.".formatted( CONFIG_FILE ), 403 );
+			return NGResponses.of( 403, "Admin endpoints are disabled. Set modulo.admin-password in %s to enable them.".formatted( CONFIG_FILE ) );
 		}
 
 		return null;
