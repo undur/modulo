@@ -163,12 +163,79 @@ class ModuloProxy extends ProxyHandler.Reverse {
 		return seconds == null ? null : Duration.ofSeconds( seconds );
 	}
 
+	/**
+	 * @return true if the target becomes a valid URI once every character a
+	 *         URI can't carry literally is percent-encoded — i.e. its only
+	 *         fault is such characters. Existing '%' escapes are left as they
+	 *         are, so a malformed one still fails.
+	 */
+	static boolean parsesOnceEncoded( final String pathQuery ) {
+		if( pathQuery == null ) {
+			return false;
+		}
+
+		final StringBuilder encoded = new StringBuilder( pathQuery.length() + 16 );
+
+		for( final byte b : pathQuery.getBytes( java.nio.charset.StandardCharsets.UTF_8 ) ) {
+			final int c = b & 0xff;
+			final boolean literal = c > 0x20 && c < 0x7f && "\"<>\\^`{|}".indexOf( c ) < 0;
+			if( literal ) {
+				encoded.append( (char)c );
+			}
+			else {
+				encoded.append( '%' ).append( Character.toUpperCase( Character.forDigit( c >> 4, 16 ) ) ).append( Character.toUpperCase( Character.forDigit( c & 0xf, 16 ) ) );
+			}
+		}
+
+		try {
+			new java.net.URI( encoded.toString() );
+			return true;
+		}
+		catch( final java.net.URISyntaxException e ) {
+			return false;
+		}
+	}
+
 	private static Throwable rootCause( final Throwable throwable ) {
 		Throwable cause = throwable;
 		while( cause.getCause() != null && cause.getCause() != cause ) {
 			cause = cause.getCause();
 		}
 		return cause;
+	}
+
+	/**
+	 * Jetty's reverse proxy addresses the upstream through a java.net.URI,
+	 * which refuses characters an HTTP request line may still carry — '|'
+	 * in a path or query, for one. WebObjects applications have always
+	 * received such URLs as-is (the classic adaptor and Apache pass the
+	 * path through untouched), so when the target can't be expressed as a
+	 * URI it is sent raw instead: same scheme, host and port, the path and
+	 * query exactly as the client wrote them. Re-encoding ('|' → "%7C")
+	 * would parse, but the application would then see a different URL than
+	 * the one requested.
+	 *
+	 * Only targets whose sole fault is characters that would merely need
+	 * encoding go through raw. A malformed escape (a stray '%', typical of
+	 * scanner junk) still fails and is answered 400 by {@link #handle} —
+	 * that's garbage, not a URL an application ever generated.
+	 */
+	@Override
+	protected org.eclipse.jetty.client.Request newProxyToServerRequest( final Request clientToProxyRequest, final HttpURI newHttpURI ) {
+		try {
+			return super.newProxyToServerRequest( clientToProxyRequest, newHttpURI );
+		}
+		catch( final IllegalArgumentException e ) {
+			if( !(rootCause( e ) instanceof java.net.URISyntaxException) || !parsesOnceEncoded( newHttpURI.getPathQuery() ) ) {
+				throw e;
+			}
+
+			return getHttpClient()
+					.newRequest( newHttpURI.getHost(), newHttpURI.getPort() )
+					.scheme( newHttpURI.getScheme() )
+					.path( newHttpURI.getPathQuery() )
+					.method( clientToProxyRequest.getMethod() );
+		}
 	}
 
 	@Override

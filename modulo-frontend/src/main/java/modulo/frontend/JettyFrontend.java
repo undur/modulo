@@ -298,8 +298,7 @@ public class JettyFrontend {
 	}
 
 	private ServerConnector buildHttpConnector() {
-		final HttpConfiguration httpConfig = new HttpConfiguration();
-		httpConfig.setSendServerVersion( false );
+		final HttpConfiguration httpConfig = HttpConfigurations.create();
 		final HttpConnectionFactory httpFactory = new HttpConnectionFactory( httpConfig );
 		final ServerConnector connector = new ServerConnector( server, httpFactory );
 		connector.setPort( httpPort );
@@ -307,8 +306,7 @@ public class JettyFrontend {
 	}
 
 	private ServerConnector buildHttpsConnector( final SslContextFactory.Server sslContextFactory ) {
-		final HttpConfiguration httpsConfig = new HttpConfiguration();
-		httpsConfig.setSendServerVersion( false );
+		final HttpConfiguration httpsConfig = HttpConfigurations.create();
 		httpsConfig.setSecureScheme( "https" );
 		httpsConfig.setSecurePort( httpsPort );
 		// sniHostCheck off: with it on, a request for a hostname we have no
@@ -348,8 +346,7 @@ public class JettyFrontend {
 	private QuicheServerConnector buildHttp3Connector(
 			final SslContextFactory.Server sslContextFactory,
 			final Path pemWorkDir ) {
-		final HttpConfiguration httpsConfig = new HttpConfiguration();
-		httpsConfig.setSendServerVersion( false );
+		final HttpConfiguration httpsConfig = HttpConfigurations.create();
 		httpsConfig.setSecureScheme( "https" );
 		httpsConfig.setSecurePort( httpsPort );
 		// sniHostCheck off: with it on, a request for a hostname we have no

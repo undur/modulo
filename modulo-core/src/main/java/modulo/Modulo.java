@@ -31,6 +31,7 @@ import modulo.error.ErrorCondition;
 import modulo.error.ErrorHandling;
 import modulo.error.ProxyRoutingException;
 import modulo.frontend.FrontendConfig;
+import modulo.frontend.HttpConfigurations;
 import modulo.frontend.JettyFrontend;
 import modulo.frontend.events.Event;
 import modulo.frontend.events.EventLog;
@@ -320,8 +321,7 @@ public class Modulo {
 		threadPool.setVirtualThreadsExecutor( Executors.newVirtualThreadPerTaskExecutor() );
 		final Server server = new Server( threadPool );
 
-		final HttpConfiguration httpConfig = new HttpConfiguration();
-		httpConfig.setSendServerVersion( false );
+		final HttpConfiguration httpConfig = HttpConfigurations.create();
 
 		final HttpConnectionFactory connectionFactory = new HttpConnectionFactory( httpConfig );
 		final ServerConnector connector = new ServerConnector( server, connectionFactory );
