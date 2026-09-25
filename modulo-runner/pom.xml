@@ -35,12 +35,12 @@
 		<dependency>
 			<groupId>is.rebbi.ng</groupId>
 			<artifactId>ng-appserver</artifactId>
-			<version>0.1.2</version>
+			<version>0.1.3</version>
 		</dependency>
 		<dependency>
 			<groupId>is.rebbi.ng</groupId>
 			<artifactId>ng-adaptor-jetty</artifactId>
-			<version>0.1.2</version>
+			<version>0.1.3</version>
 		</dependency>
 		<!-- FIXME: Should not be required; pins jetty-server so the core jars (jetty-io etc.) match the 12.1.13 http2/alpn jars, since ng-adaptor-jetty still pulls 12.1.8. Remove once ng-adaptor-jetty's jetty dep is updated // Hugi 2026-08-14 -->
 		<dependency>
