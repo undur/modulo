@@ -65,7 +65,8 @@ is the chronology.
   gauge on the dashboard. Also: verify SSE (structurally believed
   fine, never proven).
 - **Multi-instance remainders**: request-body buffering to widen
-  failover replayability (mod_WO buffered 1MB), draining on shutdown,
+  failover replayability (mod_WO buffered 1MB) — together with spooling
+  bodies that arrive without a Content-Length (Issue: #16), draining on shutdown,
   balancing strategies beyond round-robin (least-outstanding-requests
   from modulo's own observations beats WO's session-count
   `loadaverage`).
