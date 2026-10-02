@@ -3,9 +3,9 @@
 A worklist: what's next, roughly in the order it matters. Issues hold
 detailed design discussions; [BRAINSTORMING.md](BRAINSTORMING.md)
 holds ideas not yet committed to; [SETUP.md](SETUP.md) describes what
-exists today. When something ships it moves to Done (one line); when
-direction changes, the entry is edited, not appended to — git history
-is the chronology.
+exists today. When something ships it leaves this file and is recorded
+in [CHANGES.md](../CHANGES.md); when direction changes, the entry is
+edited, not appended to — git history is the chronology.
 
 ---
 
@@ -17,7 +17,7 @@ is the chronology.
   BRAINSTORMING.md, prompted by the 2026-08-31 scan (6.2k requests
   in 6 minutes from one IP against www.rebbi.is).
 - **Upstream timeouts in modulo.toml.** JavaMonitor's per-instance
-  timeouts are honored from the adaptor config (see Done); the
+  timeouts are honored from the adaptor config (see CHANGES.md); the
   proxy-level defaults (5s connect / 30s idle) still aren't
   configurable. Belongs to the tuning surface below.
 - **The tuning surface.** The config page inventories every knob the
@@ -137,31 +137,6 @@ is the chronology.
   injected into adaptor URLs, the legacy header vocabulary — purely an
   adoption feature for unmodified classic apps; verify against a real
   classic deployment before building.
-
----
-
-## Done
-
-One line each; details in git history and SETUP.md.
-
-- **Front-end mode** — TLS, SNI keystore w/ hot reload, redirects, compression *(iteration 1)*
-- **modulo-frontend extracted** as its own module *(iteration 2)*
-- **Native sites config** — fragments via `include`, strict parsing, zero-restart validated reload *(iteration 3, 2026-08-28/29)*
-- **Native ACME** — HTTP-01 issue/renew, placeholder-then-hot-swap, whole fleet migrated, certbot retired *(iteration 5, 2026-08-28)*
-- **Typed error conditions** + default error page + assignable responders *(2026-08-29)*
-- **Admin UI** — dashboard w/ traffic charts and app/total response split, applications, overview, events (+ clear), config inventory, reload *(2026-08-29/30)*
-- **Multi-instance routing** — pins, stickiness (proxy-owned woinst/ngsid affinity), round-robin, refusal steering, failover w/ dead cool-down, OOB config re-poll, unregistered-instance last-resort routing *(2026-08-29/30)*
-- **Observability base** — per-site access logs w/ vhost field, rotation, event buffer, unmatched-host tally, request stats *(2026-08-29/30)*
-- **Per-site rewrite rules** — regex, captures, redirects, first-match-wins, adaptor-space guard *(2026-08-30, issue #4)*
-- **TOML config, one root file** — modulo.toml absorbs bootstrap + sites, per-setting reload notices, JSON removed *(2026-08-30, issue #10)*
-- **WebSocket proxying** — raw tunnel after handshake, routed like HTTP, verified through wss:// *(iteration 6, 2026-08-30)*
-- **Operational skeleton** — standard layout on both servers, setup-server.sh (standalone full-stack installer), unified deploy scripts *(2026-08-30)*
-- **Performance validated** — 5× Apache+mod_WebObjects throughput at equal latency on a modern-platform A-B-A lab; report in performance-test-results-2026-08-30.md *(2026-08-30)*
-- **setup-server.sh options** — JDK distribution/version as parameters (openjdk default, latest resolved live), stack password written into SiteConfig at install *(2026-08-31)*
-- **WebServerResources serving** — `woa` on a site maps `/WebObjects/<App>.woa/…` onto the bundle's two WebServerResources subtrees, never `Resources/`; the plain-WO adoption feature, proven on SW *(2026-09-01)*
-- **Deploy through the stack** — `admin/deploy` on JavaMonitor fans a .tar.gz out to each host's wotaskd, which swaps the bundle and bounces instances; replaces the rsync post_build scripts *(2026-08-31, in wonder-slim-deployment)*
-- **Adaptor-config timeouts honored** — an instance's `recvTimeout` (else `sendTimeout`), as JavaMonitor sets it and wotaskd publishes it, becomes the upstream idle timeout for requests routed to it, per request so it follows failover; Jetty's default where none is published. `cnctTimeout` deliberately not applied: connecting to a live instance is instant, so it would only delay failover from a dead one *(2026-09-12)*
-- **Streaming deploys** — `admin/deploy` and `wa/deploy` read the archive off the wire (JavaMonitor spools to a temp file, wotaskd straight into staging); constant memory at every hop, under either adaptor. The gotcha, for the record: WO's `contentInputStream()` refuses the stream once any form value was read, and `WOContext`'s constructor reads one for the session id — Wonder's `registerStreamingRequestHandlerKey` plus the handler's `setAllowsContentInputStream` keep the window open *(2026-09-02, in wonder-slim-deployment)*
 
 ---
 
