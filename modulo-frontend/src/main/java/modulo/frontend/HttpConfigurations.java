@@ -25,12 +25,17 @@ public final class HttpConfigurations {
 	 * must not be stricter than the applications behind it, or those URLs fail
 	 * at the proxy before the application ever sees them. Same relaxation as
 	 * wo-adaptor-jetty's.</li>
+	 * <li>An encoded slash ({@code %2F}) accepted inside a path segment, such
+	 * as a file name containing "Etc/GMT". Jetty refuses it as an ambiguous
+	 * path separator. The path stays encoded all the way to the application,
+	 * which decodes the segment itself, so the path's structure is kept.
+	 * Encoded dot segments ({@code %2E%2E}) remain refused.</li>
 	 * </ul>
 	 */
 	public static HttpConfiguration create() {
 		final HttpConfiguration config = new HttpConfiguration();
 		config.setSendServerVersion( false );
-		config.setUriCompliance( UriCompliance.DEFAULT.with( "WebObjects", UriCompliance.Violation.ILLEGAL_PATH_CHARACTERS ) );
+		config.setUriCompliance( UriCompliance.DEFAULT.with( "WebObjects", UriCompliance.Violation.ILLEGAL_PATH_CHARACTERS, UriCompliance.Violation.AMBIGUOUS_PATH_SEPARATOR ) );
 		return config;
 	}
 }

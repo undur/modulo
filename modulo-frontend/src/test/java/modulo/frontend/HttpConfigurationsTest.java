@@ -35,10 +35,19 @@ public class HttpConfigurationsTest {
 	}
 
 	@Test
-	public void stillRefusesAmbiguousPaths() throws Exception {
-		// Only illegal path characters are relaxed, not the ambiguity checks that protect routing
-		final String response = rawGet( HttpConfigurations.create(), "/a/%2e%2e/b" );
-		assertTrue( response.startsWith( "HTTP/1.1 400" ), response );
+	public void acceptsAnEncodedSlashAndKeepsItEncoded() throws Exception {
+		final String response = rawGet( HttpConfigurations.create(), "/document/2008-10-01+Etc%2FGMT.jpg" );
+		assertTrue( response.startsWith( "HTTP/1.1 200" ), response );
+		assertTrue( response.contains( "path=/document/2008-10-01+Etc%2FGMT.jpg" ), response );
+	}
+
+	@Test
+	public void stillRefusesEncodedDotSegments() throws Exception {
+		// Encoded dot segments would change the path's structure once decoded; those stay refused
+		for( final String path : java.util.List.of( "/a/%2e%2e/b", "/a/%2E%2E/etc", "/a/%2e/b" ) ) {
+			final String response = rawGet( HttpConfigurations.create(), path );
+			assertTrue( response.startsWith( "HTTP/1.1 400" ), path + ": " + response );
+		}
 	}
 
 	private static String rawGet( final HttpConfiguration config, final String path ) throws Exception {
