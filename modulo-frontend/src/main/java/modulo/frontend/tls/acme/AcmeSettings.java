@@ -50,15 +50,18 @@ public record AcmeSettings(
 		return storageDir.resolve( "account-key.pem" );
 	}
 
-	public Path certPathFor( final String primaryHostname ) {
-		return siteDir( primaryHostname ).resolve( "cert.pem" );
+	/**
+	 * @param siteName The site's name (see {@link modulo.frontend.site.Site#name()}), never a hostname that may change
+	 */
+	public Path certPathFor( final String siteName ) {
+		return siteDir( siteName ).resolve( "cert.pem" );
 	}
 
-	public Path keyPathFor( final String primaryHostname ) {
-		return siteDir( primaryHostname ).resolve( "key.pem" );
+	public Path keyPathFor( final String siteName ) {
+		return siteDir( siteName ).resolve( "key.pem" );
 	}
 
-	private Path siteDir( final String primaryHostname ) {
-		return storageDir.resolve( "sites" ).resolve( primaryHostname );
+	private Path siteDir( final String siteName ) {
+		return storageDir.resolve( "sites" ).resolve( siteName );
 	}
 }

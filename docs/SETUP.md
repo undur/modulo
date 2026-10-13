@@ -236,6 +236,7 @@ warning; matches load in sorted path order.
 | Field | Required | Meaning |
 |---|---|---|
 | `hostnames` | yes | All hostnames the site answers for. The **first is the canonical hostname**; the rest are aliases that 301-redirect to it. |
+| `name` | no (first hostname) | The site's identity: it names the site's certificate directory and access-log directory, and is what the admin pages, logs and events call it. Set it, and the site can change or reorder its hostnames, including which one is canonical, without anything moving on disk. Lowercase letters, digits, `.`, `-` and `_`, starting with a letter or digit; unique across sites. Changing the name itself moves the site to new directories, like renaming it. |
 | `app` | no | Upstream app name, as known to wotaskd. Omit for a site that terminates TLS but proxies nothing (warned at startup). |
 | `tls` | no | **Omitted = ACME**: modulo obtains and renews the certificate. Or `{ mode = "manual", cert = "/path/fullchain.pem", key = "/path/privkey.pem" }` for certs you manage yourself. |
 | `canonicalRedirect` | no (`true`) | 301 alias hostnames → canonical hostname. |
@@ -303,8 +304,8 @@ is plain PEM):
 
 ```
 <storage>/account-key.pem            ACME account key (created on first use)
-<storage>/sites/<host>/cert.pem      full chain, PEM
-<storage>/sites/<host>/key.pem       private key, PKCS#8 PEM
+<storage>/sites/<name>/cert.pem      full chain, PEM
+<storage>/sites/<name>/key.pem       private key, PKCS#8 PEM
 ```
 
 - A managed site with no cert on disk gets a **self-signed
@@ -337,6 +338,24 @@ Make sure DNS for the new name points at the server, then
 `POST /reload`. The renewal check notices the certificate no longer
 covers all configured hostnames and reissues it with the new name —
 typically live within seconds.
+
+### Changing a site's canonical hostname
+
+The site's `name` — by default its first hostname — names its
+certificate and access-log directories. So before moving another
+hostname to the front, pin the name to what it is today:
+
+```diff
+ [[sites]]
++name = "www.example.net"
+-hostnames = [ "www.example.net", "www.example.com" ]
++hostnames = [ "www.example.com", "www.example.net" ]
+```
+
+`POST /reload`: `www.example.net` now redirects to `www.example.com`,
+and the certificate, the access logs and the site's name in the admin
+pages stay as they were. The certificate already covers every hostname
+in the list, so nothing is reissued.
 
 ### Adding a new site (new domain → an app)
 

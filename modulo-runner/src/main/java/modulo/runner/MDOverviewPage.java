@@ -41,6 +41,7 @@ public class MDOverviewPage extends NGComponent {
 	 * components via keypaths.
 	 */
 	public record SiteRow(
+			String name,
 			String canonicalHostname,
 			String aliases,
 			String app,
@@ -114,6 +115,7 @@ public class MDOverviewPage extends NGComponent {
 		final String redirects = (site.httpsRedirect() ? "https" : "") + (site.httpsRedirect() && site.canonicalRedirect() ? " + " : "") + (site.canonicalRedirect() ? "canonical" : "");
 
 		return new SiteRow(
+				site.name(),
 				site.primaryHostname(),
 				String.join( ", ", site.aliases() ),
 				configuredSite.app() == null ? "—" : configuredSite.app(),

@@ -321,4 +321,102 @@ class SitesConfigReaderTest {
 				""" );
 		assertThrows( SitesConfigException.class, () -> SitesConfigReader.read( tmp.resolve( "sites.toml" ) ) );
 	}
+
+	private static final String ACME = """
+			[acme]
+			email = "op@example.com"
+			storage = "/var/lib/modulo/acme"
+
+			""";
+
+	@Test
+	void aSiteIsNamedAfterItsFirstHostnameByDefault() {
+		final ConfiguredSite site = parse( ACME + """
+				[[sites]]
+				hostnames = [ "www.example.com", "example.com" ]
+				""" ).sites().getFirst();
+
+		assertEquals( "www.example.com", site.site().name() );
+		assertEquals( Path.of( "/var/lib/modulo/acme/sites/www.example.com/cert.pem" ), site.site().certPath() );
+	}
+
+	@Test
+	void anExplicitNameNamesTheStorageNotTheCanonicalHostname() {
+		final ConfiguredSite site = parse( ACME + """
+				[[sites]]
+				name = "example"
+				hostnames = [ "www.example.com", "example.com" ]
+				""" ).sites().getFirst();
+
+		assertEquals( "example", site.site().name() );
+		assertEquals( "www.example.com", site.site().primaryHostname() );
+		assertEquals( Path.of( "/var/lib/modulo/acme/sites/example/cert.pem" ), site.site().certPath() );
+		assertEquals( Path.of( "/var/lib/modulo/acme/sites/example/key.pem" ), site.site().keyPath() );
+	}
+
+	@Test
+	void changingTheCanonicalHostnameOfANamedSiteMovesNothing() {
+		final ConfiguredSite before = parse( ACME + """
+				[[sites]]
+				name = "www.example.net"
+				hostnames = [ "www.example.net", "www.example.com" ]
+				""" ).sites().getFirst();
+		final ConfiguredSite after = parse( ACME + """
+				[[sites]]
+				name = "www.example.net"
+				hostnames = [ "www.example.com", "www.example.net" ]
+				""" ).sites().getFirst();
+
+		assertEquals( "www.example.com", after.site().primaryHostname() );
+		assertEquals( before.site().name(), after.site().name() );
+		assertEquals( before.site().certPath(), after.site().certPath() );
+	}
+
+	@Test
+	void namesAreNormalizedToLowercase() {
+		assertEquals( "example", parse( ACME + """
+				[[sites]]
+				name = " Example "
+				hostnames = [ "www.example.com" ]
+				""" ).sites().getFirst().site().name() );
+	}
+
+	@Test
+	void namesThatAreNotSafeDirectoryNamesAreRefused() {
+		for( final String name : List.of( "", "..", "../etc", "a/b", "_unmatched", ".hidden", "a..b", "white space" ) ) {
+			final String toml = ACME + """
+					[[sites]]
+					name = "%s"
+					hostnames = [ "www.example.com" ]
+					""".formatted( name );
+			assertThrows( SitesConfigException.class, () -> parse( toml ), name );
+		}
+	}
+
+	@Test
+	void twoSitesCannotShareAName() {
+		final SitesConfigException e = assertThrows( SitesConfigException.class, () -> parse( ACME + """
+				[[sites]]
+				name = "shared"
+				hostnames = [ "a.example" ]
+
+				[[sites]]
+				name = "shared"
+				hostnames = [ "b.example" ]
+				""" ) );
+		assertTrue( e.getMessage().contains( "shared" ), e.getMessage() );
+	}
+
+	@Test
+	void anExplicitNameCannotTakeAnotherSitesDefaultName() {
+		// The second site would otherwise share the first site's certificate directory and access log
+		assertThrows( SitesConfigException.class, () -> parse( ACME + """
+				[[sites]]
+				hostnames = [ "a.example" ]
+
+				[[sites]]
+				name = "a.example"
+				hostnames = [ "b.example" ]
+				""" ) );
+	}
 }

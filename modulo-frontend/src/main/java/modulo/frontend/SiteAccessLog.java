@@ -26,8 +26,8 @@ import org.slf4j.LoggerFactory;
 import modulo.frontend.site.Site;
 
 /**
- * Per-site access logging: one directory per Site (keyed by canonical
- * hostname — alias traffic folds into the canonical site's directory) with
+ * Per-site access logging: one directory per Site (keyed by the site's name,
+ * see {@link Site#name()} — alias traffic folds into the site's directory) with
  * one file per day inside it, daily rollover with bounded retention, in
  * combined log format with a leading virtual-host field plus request
  * duration:
@@ -70,7 +70,7 @@ public class SiteAccessLog implements RequestLog {
 		try {
 			final String host = Request.getServerName( request );
 			final Site site = host == null ? null : sitesByHost.get().get( host.toLowerCase( Locale.ROOT ) );
-			final String fileKey = site != null ? site.primaryHostname() : UNMATCHED;
+			final String fileKey = site != null ? site.name() : UNMATCHED;
 
 			final long durationMs = TimeUnit.NANOSECONDS.toMillis( System.nanoTime() - request.getBeginNanoTime() );
 			final String line = "%s %s - - [%s] \"%s %s %s\" %d %d \"%s\" \"%s\" %dms".formatted(

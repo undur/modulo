@@ -31,7 +31,7 @@ import modulo.frontend.site.Site;
 
 /**
  * Builds and maintains an in-memory {@link KeyStore} containing one entry per
- * {@link Site}, keyed by primary hostname. Jetty's SNI selector picks the
+ * {@link Site}, keyed by the site's name. Jetty's SNI selector picks the
  * right entry per incoming TLS handshake.
  *
  * Supports hot reload: a background timer polls cert/key file mtimes and
@@ -233,11 +233,11 @@ public class CertStore {
 			try {
 				final Certificate[] chain = readCertChain( site.certPath() );
 				final PrivateKey key = readPrivateKey( site.keyPath() );
-				store.setKeyEntry( site.primaryHostname(), key, KEYSTORE_PASSWORD, chain );
+				store.setKeyEntry( site.name(), key, KEYSTORE_PASSWORD, chain );
 				loaded++;
 			}
 			catch( final Exception e ) {
-				logger.warn( "Failed to load TLS material for site {}: {}", site.primaryHostname(), e.toString() );
+				logger.warn( "Failed to load TLS material for site {}: {}", site.name(), e.toString() );
 			}
 		}
 

@@ -51,6 +51,14 @@ import modulo.rewrite.RewriteRule;
  * aliases. {@code app} is optional. {@code canonicalRedirect} and
  * {@code httpsRedirect} are optional booleans defaulting to true.
  *
+ * {@code name} is optional and defaults to the first hostname. It is the
+ * site's identity — its certificate directory, access-log directory, keystore
+ * entry and the name the admin pages use — so a site that sets it can change
+ * or reorder its hostnames, including which one is canonical, without
+ * anything moving on disk. Lowercase letters, digits, '.', '-' and '_', not
+ * starting with '_' (reserved for modulo's own, such as the unmatched-host
+ * log), and unique across all sites.
+ *
  * TLS: an omitted {@code tls} block (or {@code "mode": "acme"}) means modulo
  * manages the certificate via ACME — this requires the top-level {@code acme}
  * block, and the site's cert/key paths are derived inside the ACME storage
@@ -120,7 +128,7 @@ public class SitesConfigReader {
 
 	record Acme( String email, String directory, String storage ) {}
 
-	record SiteEntry( List<String> hostnames, String app, Tls tls, Boolean canonicalRedirect, Boolean httpsRedirect, List<RewriteEntry> rewrites, String woa ) {}
+	record SiteEntry( String name, List<String> hostnames, String app, Tls tls, Boolean canonicalRedirect, Boolean httpsRedirect, List<RewriteEntry> rewrites, String woa ) {}
 
 	record Tls( String mode, String cert, String key ) {}
 
@@ -195,9 +203,10 @@ public class SitesConfigReader {
 
 		final List<ConfiguredSite> sites = new ArrayList<>();
 		final Map<String, String> hostnameOwner = new HashMap<>();
+		final Map<String, String> nameOwner = new HashMap<>();
 
 		if( root.sites() != null ) {
-			addSites( root.sites(), mainSource, acmeSettings, sites, hostnameOwner );
+			addSites( root.sites(), mainSource, acmeSettings, sites, hostnameOwner, nameOwner );
 		}
 
 		if( root.include() != null ) {
@@ -218,7 +227,7 @@ public class SitesConfigReader {
 					if( fragment == null || fragment.sites() == null ) {
 						throw new SitesConfigException( "Included sites file %s is missing its \"sites\" array".formatted( included ) );
 					}
-					addSites( fragment.sites(), included.toString(), acmeSettings, sites, hostnameOwner );
+					addSites( fragment.sites(), included.toString(), acmeSettings, sites, hostnameOwner, nameOwner );
 				}
 			}
 		}
@@ -231,12 +240,20 @@ public class SitesConfigReader {
 			final String source,
 			final AcmeSettings acmeSettings,
 			final List<ConfiguredSite> sites,
-			final Map<String, String> hostnameOwner ) {
+			final Map<String, String> hostnameOwner,
+			final Map<String, String> nameOwner ) {
 
 		for( int i = 0; i < entries.size(); i++ ) {
 			final ConfiguredSite configuredSite = toConfiguredSite( entries.get( i ), i, acmeSettings, source );
+			final String owner = "%s (%s)".formatted( configuredSite.site().name(), source );
+
+			// Names are storage keys: two sites with one name would share a certificate directory and a log
+			final String previousNameOwner = nameOwner.putIfAbsent( configuredSite.site().name(), owner );
+			if( previousNameOwner != null ) {
+				throw new SitesConfigException( "Site name %s is used twice — by site %s and again in %s. Give one of them a \"name\" of its own".formatted( configuredSite.site().name(), previousNameOwner, source ) );
+			}
+
 			for( final String hostname : configuredSite.site().allHostnames() ) {
-				final String owner = "%s (%s)".formatted( configuredSite.site().primaryHostname(), source );
 				final String previousOwner = hostnameOwner.putIfAbsent( hostname, owner );
 				if( previousOwner != null ) {
 					throw new SitesConfigException( "Hostname %s appears more than once — in site %s and again in site %s".formatted( hostname, previousOwner, owner ) );
@@ -291,6 +308,7 @@ public class SitesConfigReader {
 		}
 
 		final String primaryHostname = hostnames.getFirst();
+		final String name = siteName( entry.name(), primaryHostname, context );
 		final Tls tls = entry.tls();
 		final String mode = (tls == null || tls.mode() == null) ? "acme" : tls.mode();
 
@@ -306,8 +324,8 @@ public class SitesConfigReader {
 				if( tls != null && (tls.cert() != null || tls.key() != null) ) {
 					throw new SitesConfigException( "%s: tls mode \"acme\" derives cert storage from the \"acme\" block — remove \"cert\"/\"key\"".formatted( context ) );
 				}
-				certPath = acmeSettings.certPathFor( primaryHostname );
-				keyPath = acmeSettings.keyPathFor( primaryHostname );
+				certPath = acmeSettings.certPathFor( name );
+				keyPath = acmeSettings.keyPathFor( name );
 				acmeManaged = true;
 			}
 			case "manual" -> {
@@ -322,6 +340,7 @@ public class SitesConfigReader {
 		}
 
 		final Site site = new Site(
+				name,
 				primaryHostname,
 				hostnames.subList( 1, hostnames.size() ),
 				certPath,
@@ -339,6 +358,30 @@ public class SitesConfigReader {
 		}
 
 		return new ConfiguredSite( site, entry.app(), acmeManaged, toRewriteRules( entry.rewrites(), context ), entry.woa() );
+	}
+
+	/**
+	 * A name is used as a directory name, so it is held to a shape that is safe as one and can't climb out of
+	 * its parent: lowercase letters, digits, '.', '-' and '_', starting with a letter or digit, without "..".
+	 */
+	private static final Pattern SITE_NAME = Pattern.compile( "[a-z0-9][a-z0-9._-]*" );
+
+	/**
+	 * @return The site's name: the configured one, validated, or the primary hostname when none is configured
+	 */
+	static String siteName( final String configured, final String primaryHostname, final String context ) {
+
+		if( configured == null ) {
+			return primaryHostname;
+		}
+
+		final String name = configured.trim().toLowerCase( Locale.ROOT );
+
+		if( !SITE_NAME.matcher( name ).matches() || name.contains( ".." ) ) {
+			throw new SitesConfigException( "%s has the name \"%s\" — a site name is a directory name: lowercase letters, digits, '.', '-' and '_', starting with a letter or digit".formatted( context, configured ) );
+		}
+
+		return name;
 	}
 
 	private static List<RewriteRule> toRewriteRules( final List<RewriteEntry> entries, final String siteContext ) {

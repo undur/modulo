@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **Sites have a name, separate from their canonical hostname**
+  A site's first hostname used to decide everything: where aliases redirect, and also the name of its
+  certificate directory, its access-log directory, and what the admin pages and events call it. Changing a
+  site's canonical domain therefore moved its certificate and split its log history. A site's optional
+  `name` now does the second job. It defaults to the first hostname, so existing configurations keep their
+  directories, and a site that sets it can reorder its hostnames freely. Names are lowercase directory-safe
+  strings, unique across sites. The admin overview shows each site's name beside its canonical hostname.
+  (#13)
+
 - **Request paths may contain an encoded slash**
   A path segment with `%2F` in it, such as a file name containing `Etc/GMT`, was refused with
   `400 Ambiguous URI path separator` before the request reached an application. The path now reaches the

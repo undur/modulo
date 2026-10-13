@@ -165,7 +165,7 @@ public class AcmeManager {
 	public void ensurePlaceholders() throws IOException {
 		for( final Site site : managedSites ) {
 			if( !Files.isRegularFile( site.certPath() ) || !Files.isRegularFile( site.keyPath() ) ) {
-				logger.info( "No certificate on disk for {} yet — writing self-signed placeholder", site.primaryHostname() );
+				logger.info( "No certificate on disk for {} yet — writing self-signed placeholder", site.name() );
 				SelfSignedCertificates.writePlaceholder( site.certPath(), site.keyPath(), site.primaryHostname(), site.allHostnames() );
 			}
 		}
@@ -230,8 +230,8 @@ public class AcmeManager {
 				return;
 			}
 			catch( final Exception e ) {
-				logger.error( "ACME issuance failed for site {} — will retry within {}: {}", site.primaryHostname(), CHECK_INTERVAL, e.toString() );
-				event( Event.Severity.ERROR, "acme-issuance-failed", site.primaryHostname(), e.getMessage() );
+				logger.error( "ACME issuance failed for site {} — will retry within {}: {}", site.name(), CHECK_INTERVAL, e.toString() );
+				event( Event.Severity.ERROR, "acme-issuance-failed", site.name(), e.getMessage() );
 			}
 		}
 
@@ -250,20 +250,20 @@ public class AcmeManager {
 			cert = readFirstCertificate( site.certPath() );
 		}
 		catch( final Exception e ) {
-			logger.warn( "Could not parse certificate for {} ({}) — will reissue: {}", site.primaryHostname(), site.certPath(), e.toString() );
+			logger.warn( "Could not parse certificate for {} ({}) — will reissue: {}", site.name(), site.certPath(), e.toString() );
 			return true;
 		}
 
 		if( isSelfSigned( cert ) ) {
-			logger.info( "Site {} is serving a self-signed placeholder — ordering a real certificate", site.primaryHostname() );
+			logger.info( "Site {} is serving a self-signed placeholder — ordering a real certificate", site.name() );
 			return true;
 		}
 		if( isExpiringSoon( cert, Instant.now() ) ) {
-			logger.info( "Certificate for {} expires {} — renewing", site.primaryHostname(), cert.getNotAfter() );
+			logger.info( "Certificate for {} expires {} — renewing", site.name(), cert.getNotAfter() );
 			return true;
 		}
 		if( !coversHostnames( cert, site.allHostnames() ) ) {
-			logger.info( "Certificate for {} does not cover all configured hostnames {} — reissuing", site.primaryHostname(), site.allHostnames() );
+			logger.info( "Certificate for {} does not cover all configured hostnames {} — reissuing", site.name(), site.allHostnames() );
 			return true;
 		}
 		return false;
@@ -336,7 +336,7 @@ public class AcmeManager {
 	 * then writes chain + fresh private key to the site's PEM paths.
 	 */
 	private void issue( final Site site, final Account account ) throws AcmeException, IOException, InterruptedException {
-		logger.info( "Ordering certificate for {} covering {}", site.primaryHostname(), site.allHostnames() );
+		logger.info( "Ordering certificate for {} covering {}", site.name(), site.allHostnames() );
 
 		final Order order = account.newOrder().domains( site.allHostnames() ).create();
 
@@ -368,7 +368,7 @@ public class AcmeManager {
 		final Status orderStatus = order.waitForCompletion( ORDER_TIMEOUT );
 		if( orderStatus != Status.VALID ) {
 			throw new AcmeException( "Order for %s ended as %s%s".formatted(
-					site.primaryHostname(), orderStatus,
+					site.name(), orderStatus,
 					order.getError().map( problem -> " — " + problem ).orElse( "" ) ) );
 		}
 
@@ -380,7 +380,7 @@ public class AcmeManager {
 		PemFiles.writeAtomic( site.keyPath(), PemFiles.privateKeyPem( domainKeys.getPrivate() ) );
 		PemFiles.writeAtomic( site.certPath(), chain.toString() );
 
-		logger.info( "Obtained certificate for {} — valid until {}", site.primaryHostname(), certificate.getCertificate().getNotAfter() );
-		event( Event.Severity.INFO, "certificate-obtained", site.primaryHostname(), "Valid until " + certificate.getCertificate().getNotAfter() );
+		logger.info( "Obtained certificate for {} — valid until {}", site.name(), certificate.getCertificate().getNotAfter() );
+		event( Event.Severity.INFO, "certificate-obtained", site.name(), "Valid until " + certificate.getCertificate().getNotAfter() );
 	}
 }

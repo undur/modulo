@@ -37,6 +37,7 @@
 					<table class="table table-sm mb-0">
 						<thead>
 							<tr>
+								<th>Site</th>
 								<th>Canonical hostname</th>
 								<th>Aliases</th>
 								<th>App</th>
@@ -48,7 +49,8 @@
 						</thead>
 						<wo:repetition list="$sites" item="$currentSite">
 							<tr>
-								<td><strong><wo:str value="$currentSite.canonicalHostname" /></strong></td>
+								<td><strong><wo:str value="$currentSite.name" /></strong></td>
+								<td><wo:str value="$currentSite.canonicalHostname" /></td>
 								<td><wo:str value="$currentSite.aliases" /></td>
 								<td>
 									<wo:str value="$currentSite.app" />
