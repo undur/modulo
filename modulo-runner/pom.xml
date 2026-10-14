@@ -9,7 +9,7 @@
 	<packaging>woapplication</packaging>
 	<properties>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-		<ng.version>0.1.4</ng.version>
+		<ng.version>0.1.5</ng.version>
 	</properties>
 	<build>
 		<finalName>${project.artifactId}</finalName>
