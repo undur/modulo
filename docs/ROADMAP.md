@@ -107,11 +107,21 @@ edited, not appended to — git history is the chronology.
 - **HTTP/3 via a fleet certificate** — machinery implemented and
   field-tested (one ACME cert covering all managed hostnames feeds the
   QUIC connector; TCP keeps per-site certs; everything degrades to
-  h2). Blocked on an upstream Jetty 12.1.12 bug (server fails writing
-  its own h3 control stream, `QUICHE_ERR_STREAM_LIMIT`, reproduced
-  with Jetty's own client). Re-test per Jetty upgrade: flip the
-  `http3` flag, restart twice, probe. Stays opt-in even when fixed —
-  the fleet order is all-or-nothing across hostnames.
+  h2). The fleet cert exists because Jetty's QUIC connector serves a
+  single certificate (one keystore alias, exported to quiche), and
+  quiche's C API offers no SNI-based certificate selection to change
+  that; neither is tracked upstream yet. Earlier this entry said h3
+  was blocked by a Jetty bug (`QUICHE_ERR_STREAM_LIMIT` on the
+  server's control stream). That was a test-client error: the client
+  lacked `HTTP3ClientQuicConfiguration.configure(...)`, so it granted
+  the server no unidirectional streams. Correctly configured, Jetty's
+  client gets h3 responses (verified on 12.1.14). One real
+  interoperability bug remains: Jetty's server can't parse a client's
+  `MAX_PUSH_ID` frame (allowed by RFC 9114) and closes the connection,
+  so clients that send it, such as aioquic by default, can't use h3.
+  Next: re-test on production with real browsers (flip the `http3`
+  flag, restart twice, probe). Stays opt-in even when it works — the
+  fleet order is all-or-nothing across hostnames.
 - **Iteration 4 — modulo-frontend for second consumers.** Make the
   front-end consumable outside modulo; likeliest consumer is
   wo-adaptor-jetty, giving a single WO app a real front door. (Issue:
@@ -150,5 +160,5 @@ edited, not appended to — git history is the chronology.
 - **No config-editing web UI in modulo.** Files are the interface; the
   admin pages stay read-only status views (plus reload). If a config
   UI ever exists, JavaMonitor drives a modulo admin API.
-- **HTTP/3 off by default** even once unblocked — the fleet-cert
+- **HTTP/3 off by default** even once it works — the fleet-cert
   coupling is an operator's conscious opt-in.
