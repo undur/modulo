@@ -1,5 +1,7 @@
 # Changelog
 
+## Unreleased
+
 ## 2026-10-16 (0.1.0)
 
 The first release of modulo.
