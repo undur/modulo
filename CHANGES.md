@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **Dependencies updated**: Jetty 12.1.14 (with quiche 0.30.0 for HTTP/3), acme4j 5.1.0 (with Bouncy Castle
+  1.83), and Jackson 3.2.3, which fixes two denial-of-service vulnerabilities in parsing JSON.
+
 ## 2026-10-16 (0.1.0)
 
 The first release. modulo is a front-facing web server and reverse proxy for WebObjects and ng-objects
