@@ -229,6 +229,54 @@ public class JettyFrontend {
 	 *         around the dedicated fleet-cert keystore when present,
 	 *         otherwise the shared factory (single-cert deployments).
 	 */
+	/**
+	 * Loads quiche, the native QUIC library HTTP/3 runs on, and reports why
+	 * it can't be used here, if it can't. Jetty loads quiche lazily, on the
+	 * first datagram: a machine that can't load it (an unsupported platform,
+	 * or a C library too old for the bundled binary) would otherwise start
+	 * the HTTP/3 connector, bind UDP, advertise h3 through Alt-Svc, and fail
+	 * every connection afterwards. Calling this first lets the caller run
+	 * without HTTP/3 instead.
+	 *
+	 * @return null if quiche loads, otherwise the most specific reason it doesn't
+	 */
+	public static String http3UnavailableReason() {
+		try {
+			Class.forName( "org.eclipse.jetty.quic.quiche.Quiche", true, JettyFrontend.class.getClassLoader() );
+			return null;
+		}
+		catch( final Throwable t ) {
+			return deepestMessage( t );
+		}
+	}
+
+	/**
+	 * The message of the innermost cause or suppressed exception, where a
+	 * native-library failure says what's actually wrong (such as a missing
+	 * GLIBC version), rather than the wrapper's generic message.
+	 */
+	static String deepestMessage( final Throwable t ) {
+		Throwable deepest = t;
+		final java.util.ArrayDeque<Throwable> pending = new java.util.ArrayDeque<>( List.of( t ) );
+		final java.util.Set<Throwable> seen = java.util.Collections.newSetFromMap( new java.util.IdentityHashMap<>() );
+		while( !pending.isEmpty() ) {
+			final Throwable current = pending.pop();
+			if( !seen.add( current ) ) {
+				continue;
+			}
+			if( current.getMessage() != null ) {
+				deepest = current;
+			}
+			if( current.getCause() != null ) {
+				pending.push( current.getCause() );
+			}
+			for( final Throwable suppressed : current.getSuppressed() ) {
+				pending.push( suppressed );
+			}
+		}
+		return deepest.getMessage() != null ? deepest.getMessage() : deepest.toString();
+	}
+
 	private SslContextFactory.Server http3SslContextFactory( final SslContextFactory.Server sharedFactory ) {
 		if( http3CertStore == null ) {
 			return sharedFactory;

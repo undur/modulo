@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- **HTTP/3 turns itself off where it can't run**
+  HTTP/3 runs on quiche, a native library, which Jetty loads only when the first QUIC packet arrives. On a
+  machine that can't load it, such as one whose C library is older than the bundled binary needs, modulo
+  started the HTTP/3 connector anyway, advertised HTTP/3 to every browser through `Alt-Svc`, and then
+  never answered a QUIC connection. modulo now loads quiche at startup when `http3` is enabled. If it
+  doesn't load, modulo logs an error with the reason, records an `http3-unavailable` event, and runs
+  without HTTP/3: no QUIC connector, no `Alt-Svc`, no fleet certificate. The configuration page shows
+  HTTP/3 as enabled but not running, with the reason.
+
+- **The HTTP/3 fleet certificate is called `h3-fleet` in logs and events**
+  Since sites have names (#13), the fleet certificate took the name of whichever site's hostname came
+  first, so its renewals were logged under that site. It has its own name now. Its files stay where they
+  were, in the ACME storage's `h3-fleet/` directory.
+
 - **Applications are told the true client address, host and scheme, in every dialect**
   modulo passed the client's address only as `remote_addr`/`remote_host`, and took it from a client-sent
   `X-Forwarded-For` when there was one. It didn't set `X-Forwarded-For`, `-Proto` or `-Host` at all, and

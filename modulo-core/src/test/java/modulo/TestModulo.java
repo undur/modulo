@@ -59,4 +59,24 @@ public class TestModulo {
 			assertEquals( modulo.error.ErrorCondition.NO_APP_FOR_HOST, e.condition() );
 		}
 	}
+
+	/** The fleet certificate has a name of its own, never that of the site whose hostname comes first. */
+	@Test
+	final void h3FleetHasItsOwnName() {
+		final modulo.config.SitesConfig config = modulo.config.SitesConfigReader.parse( """
+				[acme]
+				email = "op@example.com"
+				storage = "/var/lib/modulo/acme"
+
+				[[sites]]
+				hostnames = [ "www.example.com", "example.com" ]
+
+				[[sites]]
+				hostnames = [ "shop.example.org" ]
+				""", "test.toml" );
+		final modulo.frontend.site.Site fleet = Modulo.h3FleetSite( config );
+		assertEquals( "h3-fleet", fleet.name() );
+		assertEquals( java.util.List.of( "www.example.com", "example.com", "shop.example.org" ), fleet.allHostnames() );
+		assertEquals( java.nio.file.Path.of( "/var/lib/modulo/acme/h3-fleet/cert.pem" ), fleet.certPath() );
+	}
 }

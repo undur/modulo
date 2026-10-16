@@ -368,7 +368,20 @@ public class Modulo {
 		// one certificate, so when h3 is enabled, one extra ACME cert covering
 		// every ACME-managed hostname is maintained alongside the per-site
 		// certs and fed to the QUIC connector from its own keystore.
-		final Site fleetSite = (config.http3() && !sitesConfig.acmeManagedSites().isEmpty()) ? h3FleetSite( sitesConfig ) : null;
+		// HTTP/3 needs quiche's native library. Where it won't load, modulo
+		// runs as if http3 were off: no fleet certificate, no QUIC connector,
+		// no Alt-Svc sending browsers somewhere that can't answer
+		boolean http3 = config.http3();
+		if( http3 ) {
+			_http3UnavailableReason = JettyFrontend.http3UnavailableReason();
+			if( _http3UnavailableReason != null ) {
+				http3 = false;
+				logger.error( "http3 is enabled, but HTTP/3 can't run on this machine — serving HTTP/1.1 and HTTP/2 only. quiche, the native QUIC library, doesn't load: {}", _http3UnavailableReason );
+				_events.add( Event.Severity.ERROR, "http3-unavailable", null, null, "quiche doesn't load: " + _http3UnavailableReason );
+			}
+		}
+
+		final Site fleetSite = (http3 && !sitesConfig.acmeManagedSites().isEmpty()) ? h3FleetSite( sitesConfig ) : null;
 
 		// The ACME manager always exists when the front-end runs (a config
 		// reload may introduce the first ACME site later). ACME-managed sites
@@ -395,7 +408,7 @@ public class Modulo {
 				_acmeManager::challengeContent,
 				config.httpPort(),
 				config.httpsPort(),
-				config.http3(),
+				http3,
 				_h3FleetStore,
 				fleetSite == null ? null : Set.copyOf( fleetSite.allHostnames() ),
 				config.accessLogDir(),
@@ -415,17 +428,36 @@ public class Modulo {
 	}
 
 	/**
+	 * The fleet certificate's name in logs and events. Its own, so it's never
+	 * mistaken for the site whose hostname happens to come first.
+	 */
+	static final String H3_FLEET_NAME = "h3-fleet";
+
+	/**
+	 * Why HTTP/3 isn't running although the config enables it, or null.
+	 */
+	private volatile String _http3UnavailableReason;
+
+	/**
+	 * @return Why HTTP/3 isn't running although the config enables it (quiche
+	 *         doesn't load on this machine), or null when it runs or isn't enabled
+	 */
+	public String http3UnavailableReason() {
+		return _http3UnavailableReason;
+	}
+
+	/**
 	 * @return The synthetic Site whose certificate covers every ACME-managed
 	 *         hostname — the HTTP/3 fleet certificate. Its PEMs live under
 	 *         {@code <acme storage>/h3-fleet/}.
 	 */
-	private static Site h3FleetSite( final SitesConfig sitesConfig ) {
+	static Site h3FleetSite( final SitesConfig sitesConfig ) {
 		final List<String> hostnames = sitesConfig.acmeManagedSites().stream()
 				.flatMap( site -> site.allHostnames().stream() )
 				.distinct()
 				.toList();
 		final Path fleetDir = sitesConfig.acme().storageDir().resolve( "h3-fleet" );
-		return new Site( hostnames.getFirst(), hostnames.subList( 1, hostnames.size() ), fleetDir.resolve( "cert.pem" ), fleetDir.resolve( "key.pem" ), true, true );
+		return new Site( H3_FLEET_NAME, hostnames.getFirst(), hostnames.subList( 1, hostnames.size() ), fleetDir.resolve( "cert.pem" ), fleetDir.resolve( "key.pem" ), true, true );
 	}
 
 	private static List<Site> managedSitesPlusFleet( final SitesConfig sitesConfig, final Site fleetSite ) {

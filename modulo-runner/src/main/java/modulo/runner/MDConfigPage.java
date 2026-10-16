@@ -85,7 +85,9 @@ public class MDConfigPage extends NGComponent {
 		if( frontend != null ) {
 			rows.add( new SettingRow( "Front-end", "HTTP port", String.valueOf( frontend.httpPort() ), "modulo.conf", "yes" ) );
 			rows.add( new SettingRow( "Front-end", "HTTPS port", String.valueOf( frontend.httpsPort() ), "modulo.conf", "yes" ) );
-			rows.add( new SettingRow( "Front-end", "HTTP/3", frontend.http3() ? "enabled" : "disabled", "modulo.conf", "yes" ) );
+			final String http3Unavailable = modulo.http3UnavailableReason();
+			final String http3 = !frontend.http3() ? "disabled" : http3Unavailable == null ? "enabled" : "enabled, but not running: quiche doesn't load (" + http3Unavailable + ")";
+			rows.add( new SettingRow( "Front-end", "HTTP/3", http3, "modulo.toml [frontend] http3", "yes" ) );
 			rows.add( new SettingRow( "Front-end", "Sites config file", String.valueOf( frontend.sitesFile() ), "modulo.conf", "yes" ) );
 			rows.add( new SettingRow( "Front-end", "Access log directory", frontend.accessLogDir() == null ? "disabled" : frontend.accessLogDir().toString(), "modulo.conf", "yes" ) );
 			rows.add( new SettingRow( "Front-end", "Access log retention", JettyFrontend.ACCESS_LOG_RETAIN_DAYS + " days", "hardcoded", "not yet" ) );
