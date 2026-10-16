@@ -132,6 +132,14 @@ public class OriginHeadersProxyTest {
 	}
 
 	@Test
+	void headerNamesMatchWhateverTheirCase() throws Exception {
+		final Map<String, List<String>> echoed = send( "X-Forwarded-For: 6.6.6.6", "Remote_Addr: 6.6.6.6", "X-WebObjects-Servlet-Server-Name: evil.example" );
+		assertEquals( List.of( "127.0.0.1" ), echoed.get( "x-forwarded-for" ) );
+		assertEquals( List.of( "127.0.0.1" ), echoed.get( "remote_addr" ) );
+		assertEquals( null, echoed.get( "x-webobjects-servlet-server-name" ) );
+	}
+
+	@Test
 	void otherHeadersPassThrough() throws Exception {
 		final Map<String, List<String>> echoed = send( "Accept-Language: is", "Cookie: wosid=abc" );
 		assertEquals( List.of( "is" ), echoed.get( "accept-language" ) );
