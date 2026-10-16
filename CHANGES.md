@@ -2,8 +2,9 @@
 
 ## Unreleased
 
-- **Dependencies updated**: Jetty 12.1.14 (with quiche 0.30.0 for HTTP/3), acme4j 5.1.0 (with Bouncy Castle
-  1.83), and Jackson 3.2.3, which fixes two denial-of-service vulnerabilities in parsing JSON.
+- **Dependencies updated**: Jetty 12.1.14 (with quiche 0.30.0 for HTTP/3), ng-objects 0.1.6 (on the same Jetty),
+  acme4j 5.1.0 (with Bouncy Castle 1.83), and Jackson 3.2.3, which fixes two denial-of-service vulnerabilities in
+  parsing JSON.
 
 ## 2026-10-16 (0.1.0)
 
