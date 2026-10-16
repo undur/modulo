@@ -302,8 +302,37 @@ class SitesConfigReaderTest {
 
 		// bootstrap diffing: same file → nothing changed; edited port → named
 		assertTrue( parsed.bootstrap().changedSettings( parsed.bootstrap() ).isEmpty() );
-		final modulo.config.BootstrapConfig edited = new modulo.config.BootstrapConfig( 80, 8443, false, "/var/log/modulo", null, "hunter2", "localhost", 1085, "na" );
+		final modulo.config.BootstrapConfig edited = new modulo.config.BootstrapConfig( 80, 8443, false, "/var/log/modulo", null, "hunter2", "localhost", 1085, "na", null );
 		assertEquals( List.of( "frontend.httpPort" ), parsed.bootstrap().changedSettings( edited ) );
+	}
+
+	@Test
+	void trustedProxies( @TempDir Path tmp ) throws IOException {
+		final Path file = tmp.resolve( "modulo.toml" );
+		Files.writeString( file, """
+				[frontend]
+				trustedProxies = [ "10.0.0.0/8", "::1" ]
+
+				[[sites]]
+				hostnames = [ "www.example.com" ]
+				tls = { mode = "manual", cert = "/c", key = "/k" }
+				""" );
+		final modulo.config.BootstrapConfig bootstrap = SitesConfigReader.readWithBootstrap( file ).bootstrap();
+		assertEquals( List.of( "10.0.0.0/8", "::1" ), bootstrap.trustedProxies() );
+
+		final modulo.config.BootstrapConfig unset = new modulo.config.BootstrapConfig( null, null, null, null, null, null, null, null, null, null );
+		assertEquals( List.of( "frontend.trustedProxies" ), bootstrap.changedSettings( unset ) );
+
+		Files.writeString( file, """
+				[frontend]
+				trustedProxies = [ "proxy.example.com" ]
+
+				[[sites]]
+				hostnames = [ "www.example.com" ]
+				tls = { mode = "manual", cert = "/c", key = "/k" }
+				""" );
+		final SitesConfigException e = assertThrows( SitesConfigException.class, () -> SitesConfigReader.readWithBootstrap( file ) );
+		assertTrue( e.getMessage().contains( "proxy.example.com" ), e.getMessage() );
 	}
 
 	@Test

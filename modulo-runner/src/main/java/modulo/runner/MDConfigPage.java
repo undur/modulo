@@ -67,6 +67,7 @@ public class MDConfigPage extends NGComponent {
 
 		// Proxy
 		rows.add( new SettingRow( "Proxy", "Plain proxy port", String.valueOf( Config.MODULO_PROXY_PORT ), "-Dmodulo.proxy-port", "yes" ) );
+		rows.add( new SettingRow( "Proxy", "Trusted proxies (X-Forwarded-* believed from)", Modulo.trustedProxies().toString(), "[frontend] trustedProxies; default loopback", "yes" ) );
 		rows.add( new SettingRow( "Proxy", "Instance selection", "URL pin → woinst cookie → round-robin", "hardcoded behavior", "strategy not yet (round-robin only)" ) );
 		rows.add( new SettingRow( "Proxy", "Dead-instance cool-down", MDStartPage.humanDuration( Modulo.DEAD_COOLDOWN ), "hardcoded", "not yet" ) );
 		rows.add( new SettingRow( "Proxy", "Failover", "unreachable instances retried across remaining (body-less requests)", "hardcoded behavior", "not yet" ) );

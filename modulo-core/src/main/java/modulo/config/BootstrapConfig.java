@@ -24,7 +24,8 @@ public record BootstrapConfig(
 		String adminPassword,
 		String wotaskdHost,
 		Integer wotaskdPort,
-		String wotaskdPassword ) {
+		String wotaskdPassword,
+		List<String> trustedProxies ) {
 
 	/**
 	 * @return The names of the settings that differ between this (running)
@@ -42,6 +43,7 @@ public record BootstrapConfig(
 		addIfChanged( changed, "wotaskd.host", wotaskdHost, other.wotaskdHost() );
 		addIfChanged( changed, "wotaskd.port", wotaskdPort, other.wotaskdPort() );
 		addIfChanged( changed, "wotaskd.password", wotaskdPassword, other.wotaskdPassword() );
+		addIfChanged( changed, "frontend.trustedProxies", trustedProxies, other.trustedProxies() );
 		return changed;
 	}
 

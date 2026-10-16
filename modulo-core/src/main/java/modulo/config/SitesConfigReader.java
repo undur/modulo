@@ -111,7 +111,7 @@ public class SitesConfigReader {
 	record Root( Frontend frontend, Admin admin, Wotaskd wotaskd, Acme acme, List<String> include, List<SiteEntry> sites ) {}
 
 	/** The [frontend] table — restart-required bootstrap, main file only. */
-	record Frontend( Integer httpPort, Integer httpsPort, Boolean http3, String accessLogDir, String acmeWebroot ) {}
+	record Frontend( Integer httpPort, Integer httpsPort, Boolean http3, String accessLogDir, String acmeWebroot, List<String> trustedProxies ) {}
 
 	/** The [admin] table. */
 	record Admin( String password ) {}
@@ -150,6 +150,15 @@ public class SitesConfigReader {
 		final Frontend f = root.frontend();
 		final Admin a = root.admin();
 		final Wotaskd w = root.wotaskd();
+		final List<String> trustedProxies = f == null ? null : f.trustedProxies();
+		if( trustedProxies != null ) {
+			try {
+				modulo.TrustedProxies.parse( trustedProxies );
+			}
+			catch( final IllegalArgumentException e ) {
+				throw new SitesConfigException( "[frontend] trustedProxies: " + e.getMessage() );
+			}
+		}
 		return new BootstrapConfig(
 				f == null ? null : f.httpPort(),
 				f == null ? null : f.httpsPort(),
@@ -159,7 +168,8 @@ public class SitesConfigReader {
 				a == null ? null : a.password(),
 				w == null ? null : w.host(),
 				w == null ? null : w.port(),
-				w == null ? null : w.password() );
+				w == null ? null : w.password(),
+				trustedProxies );
 	}
 
 	/**

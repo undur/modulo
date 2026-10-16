@@ -242,6 +242,15 @@ public class Modulo {
 	}
 
 	/**
+	 * @return The proxies whose X-Forwarded-* headers modulo believes:
+	 *         [frontend] trustedProxies, or only this machine when unset
+	 */
+	public static TrustedProxies trustedProxies() {
+		final modulo.config.BootstrapConfig b = _activeBootstrap;
+		return b == null || b.trustedProxies() == null ? TrustedProxies.LOOPBACK : TrustedProxies.parse( b.trustedProxies() );
+	}
+
+	/**
 	 * @return The host wotaskd is running on
 	 */
 	public static String wotaskdHost() {
@@ -327,9 +336,9 @@ public class Modulo {
 		final ServerConnector connector = new ServerConnector( server, connectionFactory );
 		connector.setPort( _port );
 		server.addConnector( connector );
-		_proxy = new ModuloProxy( rewriteURIFunction(), _errorHandling, _events, _refusalObserver, _requestStats );
+		_proxy = new ModuloProxy( rewriteURIFunction(), _errorHandling, _events, _refusalObserver, _requestStats, trustedProxies() );
 		// WOA compat (self-contained, easy to remove — see WebServerResourcesHandler)
-		server.setHandler( new WebServerResourcesHandler( this::woaForHost, new WebSocketTunnelHandler( _proxy, rewriteURIFunction(), _errorHandling ) ) );
+		server.setHandler( new WebServerResourcesHandler( this::woaForHost, new WebSocketTunnelHandler( _proxy, rewriteURIFunction(), _errorHandling, trustedProxies() ) ) );
 		server.setErrorHandler( new ModuloProxy.ModuloErrorHandler( _errorHandling ) );
 
 		server.start();
@@ -392,7 +401,7 @@ public class Modulo {
 				config.accessLogDir(),
 				// WOA compat (self-contained, easy to remove — see WebServerResourcesHandler)
 				new WebServerResourcesHandler( this::woaForHost,
-						new WebSocketTunnelHandler( _proxy = new ModuloProxy( rewriteURIFunction(), _errorHandling, _events, _refusalObserver, _requestStats ), rewriteURIFunction(), _errorHandling ) ),
+						new WebSocketTunnelHandler( _proxy = new ModuloProxy( rewriteURIFunction(), _errorHandling, _events, _refusalObserver, _requestStats, trustedProxies() ), rewriteURIFunction(), _errorHandling, trustedProxies() ) ),
 				new ModuloProxy.ModuloErrorHandler( _errorHandling ) );
 		_frontend.start();
 

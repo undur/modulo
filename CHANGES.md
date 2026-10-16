@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- **Applications are told the true client address, host and scheme, in every dialect**
+  modulo passed the client's address only as `remote_addr`/`remote_host`, and took it from a client-sent
+  `X-Forwarded-For` when there was one. It didn't set `X-Forwarded-For`, `-Proto` or `-Host` at all, and
+  passed through whatever copies of these, or of the WebObjects adaptor's headers, the client sent. So an
+  application reading `X-Forwarded-For` saw no client address, applications couldn't tell HTTPS from HTTP,
+  and a client could choose the address, host or scheme an application believed, including the host it
+  builds complete URLs from. modulo now resolves the origin once, from the connection, removes every
+  client-sent origin header, and writes the resolved values into all of them: `X-Forwarded-For`
+  (a single address), `-Proto`, `-Host`, `-Port`, `X-Real-IP`, `Forwarded`, `remote_addr`, `remote_host`,
+  `x-webobjects-remote-addr`, `x-webobjects-server-name`, `x-webobjects-server-port`, and `https: on`
+  for HTTPS. WebSocket upgrades get the same headers. Applications built on WebObjects or Wonder that read
+  `https` or `X-Forwarded-Proto` now see requests through modulo's HTTPS as secure, which changes the
+  scheme of the URLs and redirects they generate from `http` to `https`.
+  A new `[frontend] trustedProxies` setting lists the proxies, such as a CDN or load balancer in front of
+  modulo, whose `X-Forwarded-*` headers modulo believes. It defaults to loopback only. (#14)
+
 - **Sites have a name, separate from their canonical hostname**
   A site's first hostname used to decide everything: where aliases redirect, and also the name of its
   certificate directory, its access-log directory, and what the admin pages and events call it. Changing a

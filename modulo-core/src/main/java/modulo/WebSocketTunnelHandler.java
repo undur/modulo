@@ -13,9 +13,11 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.function.Function;
 
 import org.eclipse.jetty.http.HttpField;
+import org.eclipse.jetty.http.HttpFields;
 import org.eclipse.jetty.http.HttpHeader;
 import org.eclipse.jetty.http.HttpURI;
 import org.eclipse.jetty.io.AbstractConnection;
@@ -79,11 +81,13 @@ public class WebSocketTunnelHandler extends Handler.Wrapper {
 
 	private final Function<Request, HttpURI> _targetFunction;
 	private final ErrorHandling _errorHandling;
+	private final TrustedProxies _trustedProxies;
 
-	public WebSocketTunnelHandler( final Handler proxyHandler, final Function<Request, HttpURI> targetFunction, final ErrorHandling errorHandling ) {
+	public WebSocketTunnelHandler( final Handler proxyHandler, final Function<Request, HttpURI> targetFunction, final ErrorHandling errorHandling, final TrustedProxies trustedProxies ) {
 		super( proxyHandler );
 		_targetFunction = targetFunction;
 		_errorHandling = errorHandling;
+		_trustedProxies = trustedProxies;
 	}
 
 	@Override
@@ -119,7 +123,7 @@ public class WebSocketTunnelHandler extends Handler.Wrapper {
 
 		try {
 			final OutputStream out = upstream.getOutputStream();
-			out.write( handshakeBytes( request, target ) );
+			out.write( handshakeBytes( request, target, OriginHeaders.headers( OriginHeaders.resolve( request, _trustedProxies ) ) ) );
 			out.flush();
 
 			final BufferedInputStream in = new BufferedInputStream( upstream.getInputStream() );
@@ -172,19 +176,26 @@ public class WebSocketTunnelHandler extends Handler.Wrapper {
 
 	/**
 	 * The handshake request forwarded to the instance: the original request
-	 * line/headers minus hop-by-hop, with the upgrade pair restored and —
-	 * matching the proxy's ProxyPreserveHost behavior — the client's original
-	 * authority as Host.
+	 * line/headers minus hop-by-hop, with the upgrade pair restored and the
+	 * client's origin headers replaced by [originHeaders], exactly as the
+	 * proxy does for plain HTTP (including Host, the client's original
+	 * authority).
 	 */
-	private static byte[] handshakeBytes( final Request request, final HttpURI target ) {
+	static byte[] handshakeBytes( final Request request, final HttpURI target, final Map<String, String> originHeaders ) {
+		return handshakeBytes( target, request.getHeaders(), originHeaders );
+	}
+
+	static byte[] handshakeBytes( final HttpURI target, final HttpFields clientHeaders, final Map<String, String> originHeaders ) {
 		final StringBuilder handshake = new StringBuilder( 512 );
 		handshake.append( "GET " ).append( target.getPathQuery() ).append( " HTTP/1.1\r\n" );
 
-		final String authority = request.getHttpURI().getAuthority();
-		handshake.append( "Host: " ).append( authority != null ? authority : target.getAuthority() ).append( "\r\n" );
+		originHeaders.forEach( ( name, value ) -> handshake.append( name ).append( ": " ).append( value ).append( "\r\n" ) );
 
-		for( final HttpField field : request.getHeaders() ) {
+		for( final HttpField field : clientHeaders ) {
 			final String name = field.getName().toLowerCase( Locale.ROOT );
+			if( OriginHeaders.ORIGIN_HEADERS.contains( name ) ) {
+				continue; // the client's claims; ours were written above
+			}
 			switch( name ) {
 				case "host", "connection", "upgrade", "keep-alive", "te", "transfer-encoding", "proxy-connection", "proxy-authorization" -> {
 					// dropped — hop-by-hop, or replaced below

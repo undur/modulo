@@ -188,6 +188,8 @@ httpPort     = 80                    # plain-HTTP connector (redirects + ACME ch
 httpsPort    = 443                   # TLS connector
 http3        = false                 # HTTP/3 (QUIC) — leave off for multi-site, see roadmap
 accessLogDir = "/opt/webobjects/log/access"   # per-site access logs; unset disables
+trustedProxies = [ "127.0.0.1", "::1" ]   # proxies whose X-Forwarded-* modulo believes (default: loopback);
+                                         # see "What applications are told about a request"
 
 [admin]
 password = "..."     # guards the admin pages (HTTP Basic, any username).
@@ -206,6 +208,45 @@ directory = "letsencrypt"            # optional — or "letsencrypt-staging", or
 
 # ...plus [[sites]] entries, optional if include covers everything
 ```
+
+### What applications are told about a request
+
+modulo works out each request's origin once (the client's address, the
+host it asked for, and the scheme and port it used) and passes it to the
+application in every header an application of any generation reads it
+from. Any copy of those headers the client sent is removed first, so an
+application can believe them whichever one it reads.
+
+| | Headers |
+|---|---|
+| Client address | `X-Forwarded-For` (a single address, not a chain), `X-Real-IP`, `remote_addr`, `remote_host`, `x-webobjects-remote-addr` |
+| Requested host | `Host` (the host the client asked for, as Apache's `ProxyPreserveHost On`), `X-Forwarded-Host`, `x-webobjects-server-name` (without the port) |
+| Scheme and port | `X-Forwarded-Proto`, `X-Forwarded-Port`, `x-webobjects-server-port`, `https: on` (HTTPS only) |
+| All of it | `Forwarded` (RFC 7239: `for`, `proto`, `host`) |
+
+modulo also always sends `x-webobjects-adaptor-version: Modulo`, which
+WebObjects takes to mean it is behind a web server. A client's copies of
+headers that modulo doesn't write but some applications read as the origin
+(`x-webobjects-servlet-server-name`, `x-webobjects-servlet-server-port`,
+`server_name`, `server_port`, `http_host`, `pc-remote-addr`, `remote_user`,
+`X-Forwarded-Server`) are removed as well.
+
+The origin is the connection itself: the address it comes from, whether
+it is TLS, and the host the request names. Only when the connection comes
+from one of `trustedProxies` does modulo believe that proxy's
+`X-Forwarded-For`, `X-Forwarded-Proto`, `X-Forwarded-Host` and
+`X-Forwarded-Port`. It reads `X-Forwarded-For` from the right, skipping
+trusted proxies, and takes the first address that isn't one as the client.
+
+- **modulo facing the internet** needs no setting. The default trusts only
+  loopback (`127.0.0.0/8` and `::1`), and no client connects from there.
+- **modulo behind a CDN, load balancer or another web server** lists that
+  proxy's addresses or ranges: `trustedProxies = [ "10.0.0.0/8" ]`. Setting
+  it replaces the default, so include loopback if a local proxy is also in
+  front. `[]` trusts nothing.
+
+Entries are IP addresses or CIDR ranges, never hostnames. An invalid entry
+is a configuration error. Changing it needs a restart.
 
 ### Fragment files
 
