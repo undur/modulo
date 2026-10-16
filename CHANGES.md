@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 2026-10-16 (0.1.0)
+
+The first release of modulo.
 
 - **HTTP/3 turns itself off where it can't run**
   HTTP/3 runs on quiche, a native library, which Jetty loads only when the first QUIC packet arrives. On a
@@ -69,8 +71,8 @@
 
 ## Before this changelog
 
-modulo has not had a release yet. What follows is the work that shipped before this file existed, as the
-roadmap recorded it, newest first.
+The work that shipped before this file existed, ahead of the first release, as the roadmap recorded it,
+newest first.
 
 - **JavaMonitor's timeouts are honored** *(2026-09-12)*
   An instance's receive timeout from JavaMonitor (or its send timeout, if only that is set) becomes the
