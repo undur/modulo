@@ -1,5 +1,7 @@
 # Changelog
 
+## Unreleased
+
 ## 2026-10-18 (0.1.1)
 
 - **Dependencies updated**: Jetty 12.1.14 (with quiche 0.30.0 for HTTP/3), ng-objects 0.1.6 (on the same Jetty),
